@@ -4,52 +4,54 @@ import android.annotation.SuppressLint
 import android.content.pm.ActivityInfo
 import android.content.res.Configuration
 import android.net.Uri
+import android.net.http.SslError
 import android.os.Bundle
 import android.view.*
 import android.webkit.*
 import androidx.activity.viewModels
 import androidx.core.view.size
-import androidx.webkit.WebSettingsCompat
-import androidx.webkit.WebViewFeature
 import io.legado.app.R
 import io.legado.app.base.VMBaseActivity
+import io.legado.app.constant.AppConst
+import io.legado.app.constant.AppConst.imagePathKey
 import io.legado.app.databinding.ActivityRssReadBinding
 import io.legado.app.help.config.AppConfig
 import io.legado.app.lib.dialogs.SelectItem
+import io.legado.app.lib.dialogs.selector
+import io.legado.app.lib.theme.accentColor
 import io.legado.app.lib.theme.primaryTextColor
 import io.legado.app.model.Download
 import io.legado.app.ui.association.OnLineImportActivity
-import io.legado.app.ui.document.HandleFileContract
+import io.legado.app.ui.file.HandleFileContract
 import io.legado.app.ui.login.SourceLoginActivity
 import io.legado.app.utils.*
 import io.legado.app.utils.viewbindingdelegate.viewBinding
 import kotlinx.coroutines.launch
 import org.apache.commons.text.StringEscapeUtils
 import org.jsoup.Jsoup
+import java.io.ByteArrayInputStream
 import java.net.URLDecoder
 
 /**
  * rss阅读界面
  */
-class ReadRssActivity : VMBaseActivity<ActivityRssReadBinding, ReadRssViewModel>(false),
-    ReadRssViewModel.CallBack {
+class ReadRssActivity : VMBaseActivity<ActivityRssReadBinding, ReadRssViewModel>(false) {
 
     override val binding by viewBinding(ActivityRssReadBinding::inflate)
     override val viewModel by viewModels<ReadRssViewModel>()
-    private val imagePathKey = "imagePath"
     private var starMenuItem: MenuItem? = null
     private var ttsMenuItem: MenuItem? = null
     private var customWebViewCallback: WebChromeClient.CustomViewCallback? = null
-    private var webPic: String? = null
-    private val saveImage = registerForActivityResult(HandleFileContract()) {
+    private val selectImageDir = registerForActivityResult(HandleFileContract()) {
         it.uri?.let { uri ->
-            ACache.get(this).put(imagePathKey, uri.toString())
-            viewModel.saveImage(webPic, uri)
+            ACache.get().put(imagePathKey, uri.toString())
+            viewModel.saveImage(it.value, uri)
         }
     }
 
     override fun onActivityCreated(savedInstanceState: Bundle?) {
-        viewModel.callBack = this
+        viewModel.upStarMenuData.observe(this) { upStarMenu() }
+        viewModel.upTtsMenuData.observe(this) { upTtsMenu(it) }
         binding.titleBar.title = intent.getStringExtra("title")
         initWebView()
         initLiveData()
@@ -65,6 +67,7 @@ class ReadRssActivity : VMBaseActivity<ActivityRssReadBinding, ReadRssViewModel>
                 window.clearFlags(WindowManager.LayoutParams.FLAG_FORCE_NOT_FULLSCREEN)
                 window.addFlags(WindowManager.LayoutParams.FLAG_FULLSCREEN)
             }
+
             Configuration.ORIENTATION_PORTRAIT -> {
                 window.clearFlags(WindowManager.LayoutParams.FLAG_FULLSCREEN)
                 window.addFlags(WindowManager.LayoutParams.FLAG_FORCE_NOT_FULLSCREEN)
@@ -77,9 +80,9 @@ class ReadRssActivity : VMBaseActivity<ActivityRssReadBinding, ReadRssViewModel>
         return super.onCompatCreateOptionsMenu(menu)
     }
 
-    override fun onPrepareOptionsMenu(menu: Menu?): Boolean {
-        starMenuItem = menu?.findItem(R.id.menu_rss_star)
-        ttsMenuItem = menu?.findItem(R.id.menu_aloud)
+    override fun onPrepareOptionsMenu(menu: Menu): Boolean {
+        starMenuItem = menu.findItem(R.id.menu_rss_star)
+        ttsMenuItem = menu.findItem(R.id.menu_aloud)
         upStarMenu()
         return super.onPrepareOptionsMenu(menu)
     }
@@ -94,15 +97,22 @@ class ReadRssActivity : VMBaseActivity<ActivityRssReadBinding, ReadRssViewModel>
             R.id.menu_rss_refresh -> viewModel.refresh {
                 binding.webView.reload()
             }
+
             R.id.menu_rss_star -> viewModel.favorite()
-            R.id.menu_share_it -> viewModel.rssArticle?.let {
-                share(it.link)
-            } ?: toastOnUi(R.string.null_url)
+            R.id.menu_share_it -> {
+                binding.webView.url?.let {
+                    share(it)
+                } ?: viewModel.rssArticle?.let {
+                    share(it.link)
+                } ?: toastOnUi(R.string.null_url)
+            }
+
             R.id.menu_aloud -> readAloud()
             R.id.menu_login -> startActivity<SourceLoginActivity> {
                 putExtra("type", "rssSource")
                 putExtra("key", viewModel.rssSource?.loginUrl)
             }
+
             R.id.menu_browser_open -> binding.webView.url?.let {
                 openUrl(it)
             } ?: toastOnUi("url null")
@@ -117,6 +127,7 @@ class ReadRssActivity : VMBaseActivity<ActivityRssReadBinding, ReadRssViewModel>
 
     @SuppressLint("SetJavaScriptEnabled")
     private fun initWebView() {
+        binding.progressBar.fontColor = accentColor
         binding.webView.webChromeClient = CustomWebChromeClient()
         binding.webView.webViewClient = CustomWebViewClient()
         binding.webView.settings.apply {
@@ -124,16 +135,30 @@ class ReadRssActivity : VMBaseActivity<ActivityRssReadBinding, ReadRssViewModel>
             domStorageEnabled = true
             allowContentAccess = true
             builtInZoomControls = true
+            displayZoomControls = false
+            setDarkeningAllowed(AppConfig.isNightTheme)
         }
-        binding.webView.addJavascriptInterface(this, "app")
-        upWebViewTheme()
+        binding.webView.addJavascriptInterface(this, "thisActivity")
+        viewModel.rssSource?.let {
+            binding.webView.addJavascriptInterface(it, "thisSource")
+        }
         binding.webView.setOnLongClickListener {
             val hitTestResult = binding.webView.hitTestResult
             if (hitTestResult.type == WebView.HitTestResult.IMAGE_TYPE ||
                 hitTestResult.type == WebView.HitTestResult.SRC_IMAGE_ANCHOR_TYPE
             ) {
-                hitTestResult.extra?.let {
-                    saveImage(it)
+                hitTestResult.extra?.let { webPic ->
+                    selector(
+                        arrayListOf(
+                            SelectItem(getString(R.string.action_save), "save"),
+                            SelectItem(getString(R.string.select_folder), "selectFolder")
+                        )
+                    ) { _, charSequence, _ ->
+                        when (charSequence.value) {
+                            "save" -> saveImage(webPic)
+                            "selectFolder" -> selectSaveFolder(null)
+                        }
+                    }
                     return@setOnLongClickListener true
                 }
             }
@@ -150,23 +175,23 @@ class ReadRssActivity : VMBaseActivity<ActivityRssReadBinding, ReadRssViewModel>
     }
 
     private fun saveImage(webPic: String) {
-        this.webPic = webPic
-        val path = ACache.get(this@ReadRssActivity).getAsString(imagePathKey)
+        val path = ACache.get().getAsString(imagePathKey)
         if (path.isNullOrEmpty()) {
-            selectSaveFolder()
+            selectSaveFolder(webPic)
         } else {
             viewModel.saveImage(webPic, Uri.parse(path))
         }
     }
 
-    private fun selectSaveFolder() {
+    private fun selectSaveFolder(webPic: String?) {
         val default = arrayListOf<SelectItem<Int>>()
-        val path = ACache.get(this@ReadRssActivity).getAsString(imagePathKey)
+        val path = ACache.get().getAsString(imagePathKey)
         if (!path.isNullOrEmpty()) {
             default.add(SelectItem(path, -1))
         }
-        saveImage.launch {
+        selectImageDir.launch {
             otherActions = default
+            value = webPic
         }
     }
 
@@ -177,6 +202,9 @@ class ReadRssActivity : VMBaseActivity<ActivityRssReadBinding, ReadRssViewModel>
                 upJavaScriptEnable()
                 val url = NetworkUtils.getAbsoluteURL(it.origin, it.link)
                 val html = viewModel.clHtml(content)
+                binding.webView.settings.userAgentString =
+                    viewModel.rssSource?.getHeaderMap()?.get(AppConst.UA_NAME, true)
+                        ?: AppConfig.userAgent
                 if (viewModel.rssSource?.loadWithBaseUrl == true) {
                     binding.webView
                         .loadDataWithBaseURL(url, html, "text/html", "utf-8", url)//不想用baseUrl进else
@@ -188,6 +216,7 @@ class ReadRssActivity : VMBaseActivity<ActivityRssReadBinding, ReadRssViewModel>
         }
         viewModel.urlLiveData.observe(this) {
             upJavaScriptEnable()
+            binding.webView.settings.userAgentString = it.getUserAgent()
             binding.webView.loadUrl(it.url, it.headerMap)
         }
     }
@@ -199,24 +228,8 @@ class ReadRssActivity : VMBaseActivity<ActivityRssReadBinding, ReadRssViewModel>
         }
     }
 
-    private fun upWebViewTheme() {
-        if (AppConfig.isNightTheme) {
-            if (WebViewFeature.isFeatureSupported(WebViewFeature.FORCE_DARK_STRATEGY)) {
-                WebSettingsCompat.setForceDarkStrategy(
-                    binding.webView.settings,
-                    WebSettingsCompat.DARK_STRATEGY_PREFER_WEB_THEME_OVER_USER_AGENT_DARKENING
-                )
-            }
-            if (WebViewFeature.isFeatureSupported(WebViewFeature.FORCE_DARK)) {
-                WebSettingsCompat.setForceDark(
-                    binding.webView.settings,
-                    WebSettingsCompat.FORCE_DARK_ON
-                )
-            }
-        }
-    }
-
-    override fun upStarMenu() {
+    private fun upStarMenu() {
+        starMenuItem?.isVisible = viewModel.rssArticle != null
         if (viewModel.rssStar != null) {
             starMenuItem?.setIcon(R.drawable.ic_star)
             starMenuItem?.setTitle(R.string.in_favorites)
@@ -227,7 +240,7 @@ class ReadRssActivity : VMBaseActivity<ActivityRssReadBinding, ReadRssViewModel>
         starMenuItem?.icon?.setTintMutate(primaryTextColor)
     }
 
-    override fun upTtsMenu(isPlaying: Boolean) {
+    private fun upTtsMenu(isPlaying: Boolean) {
         launch {
             if (isPlaying) {
                 ttsMenuItem?.setIcon(R.drawable.ic_stop_black_24dp)
@@ -269,16 +282,19 @@ class ReadRssActivity : VMBaseActivity<ActivityRssReadBinding, ReadRssViewModel>
 
     @SuppressLint("SetJavaScriptEnabled")
     private fun readAloud() {
-        if (viewModel.textToSpeech?.isSpeaking == true) {
-            viewModel.textToSpeech?.stop()
+        if (viewModel.tts?.isSpeaking == true) {
+            viewModel.tts?.stop()
             upTtsMenu(false)
         } else {
             binding.webView.settings.javaScriptEnabled = true
             binding.webView.evaluateJavascript("document.documentElement.outerHTML") {
                 val html = StringEscapeUtils.unescapeJson(it)
                     .replace("^\"|\"$".toRegex(), "")
-                Jsoup.parse(html).text()
-                viewModel.readAloud(Jsoup.parse(html).textArray())
+                viewModel.readAloud(
+                    Jsoup.parse(html)
+                        .textArray()
+                        .joinToString("\n")
+                )
             }
         }
     }
@@ -289,6 +305,12 @@ class ReadRssActivity : VMBaseActivity<ActivityRssReadBinding, ReadRssViewModel>
     }
 
     inner class CustomWebChromeClient : WebChromeClient() {
+
+        override fun onProgressChanged(view: WebView?, newProgress: Int) {
+            super.onProgressChanged(view, newProgress)
+            binding.progressBar.setDurProgress(newProgress)
+            binding.progressBar.gone(newProgress == 100)
+        }
 
         override fun onShowCustomView(view: View?, callback: CustomViewCallback?) {
             requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_SENSOR
@@ -305,53 +327,105 @@ class ReadRssActivity : VMBaseActivity<ActivityRssReadBinding, ReadRssViewModel>
     }
 
     inner class CustomWebViewClient : WebViewClient() {
+
         override fun shouldOverrideUrlLoading(
-            view: WebView?,
-            request: WebResourceRequest?
+            view: WebView,
+            request: WebResourceRequest
         ): Boolean {
-            request?.let {
-                return shouldOverrideUrlLoading(it.url)
-            }
-            return true
+            return shouldOverrideUrlLoading(request.url)
         }
 
-        @Suppress("DEPRECATION")
-        override fun shouldOverrideUrlLoading(view: WebView?, url: String?): Boolean {
-            url?.let {
-                return shouldOverrideUrlLoading(Uri.parse(it))
-            }
-            return true
+        @Suppress("DEPRECATION", "OVERRIDE_DEPRECATION", "KotlinRedundantDiagnosticSuppress")
+        override fun shouldOverrideUrlLoading(view: WebView, url: String): Boolean {
+            return shouldOverrideUrlLoading(Uri.parse(url))
         }
 
-        override fun onPageFinished(view: WebView?, url: String?) {
+        /**
+         * 如果有黑名单,黑名单匹配返回空白,
+         * 没有黑名单再判断白名单,在白名单中的才通过,
+         * 都没有不做处理
+         */
+        override fun shouldInterceptRequest(
+            view: WebView,
+            request: WebResourceRequest
+        ): WebResourceResponse? {
+            val url = request.url.toString()
+            viewModel.rssSource?.let { source ->
+                val blacklist = source.contentBlacklist?.splitNotBlank(",")
+                if (!blacklist.isNullOrEmpty()) {
+                    blacklist.forEach {
+                        if (url.startsWith(it) || url.matches(it.toRegex())) {
+                            return createEmptyResource()
+                        }
+                    }
+                } else {
+                    val whitelist = source.contentWhitelist?.splitNotBlank(",")
+                    if (!whitelist.isNullOrEmpty()) {
+                        whitelist.forEach {
+                            if (url.startsWith(it) || url.matches(it.toRegex())) {
+                                return super.shouldInterceptRequest(view, request)
+                            }
+                        }
+                        return createEmptyResource()
+                    }
+                }
+            }
+            return super.shouldInterceptRequest(view, request)
+        }
+
+        override fun onPageFinished(view: WebView, url: String?) {
             super.onPageFinished(view, url)
-            view?.title?.let { title ->
+            view.title?.let { title ->
                 if (title != url && title != view.url && title.isNotBlank() && url != "about:blank") {
                     binding.titleBar.title = title
                 } else {
                     binding.titleBar.title = intent.getStringExtra("title")
                 }
             }
+            viewModel.rssSource?.injectJs?.let {
+                if (it.isNotBlank()) {
+                    view.evaluateJavascript(it, null)
+                }
+            }
+        }
+
+        private fun createEmptyResource(): WebResourceResponse {
+            return WebResourceResponse(
+                "text/plain",
+                "utf-8",
+                ByteArrayInputStream("".toByteArray())
+            )
         }
 
         private fun shouldOverrideUrlLoading(url: Uri): Boolean {
             when (url.scheme) {
-                "http", "https" -> {
+                "http", "https", "jsbridge" -> {
                     return false
                 }
+
                 "legado", "yuedu" -> {
                     startActivity<OnLineImportActivity> {
                         data = url
                     }
                     return true
                 }
+
                 else -> {
-                    binding.root.longSnackbar("跳转其它应用", "确认") {
+                    binding.root.longSnackbar(R.string.jump_to_another_app, R.string.confirm) {
                         openUrl(url)
                     }
                     return true
                 }
             }
+        }
+
+        @SuppressLint("WebViewClientOnReceivedSslError")
+        override fun onReceivedSslError(
+            view: WebView?,
+            handler: SslErrorHandler?,
+            error: SslError?
+        ) {
+            handler?.proceed()
         }
 
     }

@@ -4,6 +4,7 @@
 		<item>Texto</item>
 		<item>Audio</item>
 		<item>Image</item>
+		<item>File</item>
 	</string-array>
 
 	<string-array name="group_style">
@@ -58,6 +59,7 @@
 		<item>@string/screen_portrait</item>
 		<item>@string/screen_landscape</item>
 		<item>@string/screen_sensor</item>
+		<item>反向竖屏</item>
 	</string-array>
 
 	<string-array name="icon_names">
@@ -90,7 +92,8 @@
 		<item>Batería</item>
 		<item>Batería%</item>
 		<item>Páginas</item>
-		<item>Avance</item>
+		<item>Avance(%)</item>
+		<item>Avance(xx/yyy)</item>
 		<item>Páginas y avance</item>
 		<item>Tiempo y Batería</item>
 		<item>Tiempo y Batería%</item>

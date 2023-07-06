@@ -3,6 +3,7 @@ package io.legado.app.ui.book.toc
 import android.annotation.SuppressLint
 import android.app.Activity.RESULT_OK
 import android.content.Intent
+import android.graphics.PorterDuff
 import android.os.Bundle
 import android.view.View
 import androidx.fragment.app.activityViewModels
@@ -13,7 +14,8 @@ import io.legado.app.data.appDb
 import io.legado.app.data.entities.Book
 import io.legado.app.data.entities.BookChapter
 import io.legado.app.databinding.FragmentChapterListBinding
-import io.legado.app.help.BookHelp
+import io.legado.app.help.book.BookHelp
+import io.legado.app.help.book.isLocal
 import io.legado.app.lib.theme.bottomBackground
 import io.legado.app.lib.theme.getPrimaryTextColor
 import io.legado.app.ui.widget.recycler.UpLinearLayoutManager
@@ -43,8 +45,8 @@ class ChapterListFragment : VMBaseFragment<TocViewModel>(R.layout.fragment_chapt
         val btc = requireContext().getPrimaryTextColor(ColorUtils.isColorLight(bbg))
         llChapterBaseInfo.setBackgroundColor(bbg)
         tvCurrentChapterInfo.setTextColor(btc)
-        ivChapterTop.setColorFilter(btc)
-        ivChapterBottom.setColorFilter(btc)
+        ivChapterTop.setColorFilter(btc, PorterDuff.Mode.SRC_IN)
+        ivChapterBottom.setColorFilter(btc, PorterDuff.Mode.SRC_IN)
         initRecyclerView()
         initView()
         viewModel.bookData.observe(this@ChapterListFragment) {
@@ -93,11 +95,19 @@ class ChapterListFragment : VMBaseFragment<TocViewModel>(R.layout.fragment_chapt
     }
 
     override fun observeLiveBus() {
-        observeEvent<BookChapter>(EventBus.SAVE_CONTENT) { chapter ->
+        observeEvent<Pair<Book, BookChapter>>(EventBus.SAVE_CONTENT) { (book, chapter) ->
             viewModel.bookData.value?.bookUrl?.let { bookUrl ->
-                if (chapter.bookUrl == bookUrl) {
+                if (book.bookUrl == bookUrl) {
                     adapter.cacheFileNames.add(chapter.getFileName())
-                    adapter.notifyItemChanged(chapter.index, true)
+                    if (viewModel.searchKey.isNullOrEmpty()) {
+                        adapter.notifyItemChanged(chapter.index, true)
+                    } else {
+                        adapter.getItems().forEachIndexed { index, bookChapter ->
+                            if (bookChapter.index == chapter.index) {
+                                adapter.notifyItemChanged(index, true)
+                            }
+                        }
+                    }
                 }
             }
         }
@@ -128,12 +138,13 @@ class ChapterListFragment : VMBaseFragment<TocViewModel>(R.layout.fragment_chapt
                 }
             }
             mLayoutManager.scrollToPositionWithOffset(scrollPos, 0)
+            adapter.upDisplayTitles(scrollPos)
         }
     }
 
     override fun clearDisplayTitle() {
         adapter.clearDisplayTitle()
-        adapter.upDisplayTitle()
+        adapter.upDisplayTitles(mLayoutManager.findFirstVisibleItemPosition())
     }
 
     override val scope: CoroutineScope
@@ -143,7 +154,7 @@ class ChapterListFragment : VMBaseFragment<TocViewModel>(R.layout.fragment_chapt
         get() = viewModel.bookData.value
 
     override val isLocalBook: Boolean
-        get() = viewModel.bookData.value?.isLocalBook() == true
+        get() = viewModel.bookData.value?.isLocal == true
 
     override fun durChapterIndex(): Int {
         return durChapterIndex
@@ -151,7 +162,10 @@ class ChapterListFragment : VMBaseFragment<TocViewModel>(R.layout.fragment_chapt
 
     override fun openChapter(bookChapter: BookChapter) {
         activity?.run {
-            setResult(RESULT_OK, Intent().putExtra("index", bookChapter.index))
+            setResult(RESULT_OK, Intent()
+                .putExtra("index", bookChapter.index)
+                .putExtra("chapterChanged", bookChapter.index != durChapterIndex)
+            )
             finish()
         }
     }

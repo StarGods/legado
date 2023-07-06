@@ -9,15 +9,17 @@ import android.widget.LinearLayout
 import androidx.fragment.app.DialogFragment
 import androidx.preference.Preference
 import io.legado.app.R
-import io.legado.app.base.BasePreferenceFragment
 import io.legado.app.constant.EventBus
 import io.legado.app.constant.PreferKey
+import io.legado.app.help.config.AppConfig
 import io.legado.app.help.config.ReadBookConfig
+import io.legado.app.lib.prefs.fragment.PreferenceFragment
 import io.legado.app.lib.theme.bottomBackground
 import io.legado.app.lib.theme.primaryColor
 import io.legado.app.model.ReadBook
 import io.legado.app.ui.book.read.ReadBookActivity
 import io.legado.app.ui.book.read.page.provider.ChapterProvider
+import io.legado.app.ui.widget.number.NumberPickerDialog
 import io.legado.app.utils.dpToPx
 import io.legado.app.utils.getPrefBoolean
 import io.legado.app.utils.postEvent
@@ -67,12 +69,15 @@ class MoreConfigDialog : DialogFragment() {
         (activity as ReadBookActivity).bottomDialog--
     }
 
-    class ReadPreferenceFragment : BasePreferenceFragment(),
+    class ReadPreferenceFragment : PreferenceFragment(),
         SharedPreferences.OnSharedPreferenceChangeListener {
+
+        private val slopSquare by lazy { ViewConfiguration.get(requireContext()).scaledTouchSlop }
 
         @SuppressLint("RestrictedApi")
         override fun onCreatePreferences(savedInstanceState: Bundle?, rootKey: String?) {
             addPreferencesFromResource(R.xml.pref_config_read)
+            upPreferenceSummary(PreferKey.pageTouchSlop, slopSquare.toString())
         }
 
         override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
@@ -128,6 +133,16 @@ class MoreConfigDialog : DialogFragment() {
                     ChapterProvider.upLayout()
                     ReadBook.loadContent(false)
                 }
+                PreferKey.showReadTitleAddition,
+                PreferKey.readBarStyleFollowPage -> {
+                    postEvent(EventBus.UPDATE_READ_ACTION_BAR, true)
+                }
+                PreferKey.progressBarBehavior -> {
+                    postEvent(EventBus.UP_SEEK_BAR, true)
+                }
+                PreferKey.noAnimScrollPage -> {
+                    ReadBook.callBack?.upPageAnim()
+                }
             }
         }
 
@@ -137,8 +152,28 @@ class MoreConfigDialog : DialogFragment() {
                 "clickRegionalConfig" -> {
                     (activity as? ReadBookActivity)?.showClickRegionalConfig()
                 }
+                PreferKey.pageTouchSlop -> {
+                    NumberPickerDialog(requireContext())
+                        .setTitle(getString(R.string.page_touch_slop_dialog_title))
+                        .setMaxValue(9999)
+                        .setMinValue(0)
+                        .setValue(AppConfig.pageTouchSlop)
+                        .show {
+                            AppConfig.pageTouchSlop = it
+                            postEvent(EventBus.UP_CONFIG, false)
+                        }
+                }
             }
             return super.onPreferenceTreeClick(preference)
+        }
+
+        @Suppress("SameParameterValue")
+        private fun upPreferenceSummary(preferenceKey: String, value: String?) {
+            val preference = findPreference<Preference>(preferenceKey) ?: return
+            when (preferenceKey) {
+                PreferKey.pageTouchSlop -> preference.summary =
+                    getString(R.string.page_touch_slop_summary, value)
+            }
         }
 
     }

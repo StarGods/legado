@@ -3,6 +3,7 @@ package io.legado.app.ui.welcome
 import android.content.Intent
 import android.graphics.drawable.BitmapDrawable
 import android.os.Bundle
+import androidx.core.view.postDelayed
 import io.legado.app.base.BaseActivity
 import io.legado.app.constant.PreferKey
 import io.legado.app.constant.Theme
@@ -26,7 +27,7 @@ open class WelcomeActivity : BaseActivity<ActivityWelcomeBinding>() {
         if (intent.flags and Intent.FLAG_ACTIVITY_BROUGHT_TO_FRONT != 0) {
             finish()
         } else {
-            binding.root.postDelayed({ startMainActivity() }, 600)
+            binding.root.postDelayed(600) { startMainActivity() }
         }
     }
 
@@ -45,6 +46,7 @@ open class WelcomeActivity : BaseActivity<ActivityWelcomeBinding>() {
                         BitmapUtils.decodeBitmap(path, size.widthPixels, size.heightPixels).let {
                             binding.tvLegado.visible(getPrefBoolean(PreferKey.welcomeShowTextDark))
                             binding.ivBook.visible(getPrefBoolean(PreferKey.welcomeShowIconDark))
+                            binding.tvGzh.visible(getPrefBoolean(PreferKey.welcomeShowTextDark))
                             window.decorView.background = BitmapDrawable(resources, it)
                             return
                         }
@@ -54,6 +56,7 @@ open class WelcomeActivity : BaseActivity<ActivityWelcomeBinding>() {
                         BitmapUtils.decodeBitmap(path, size.widthPixels, size.heightPixels).let {
                             binding.tvLegado.visible(getPrefBoolean(PreferKey.welcomeShowText))
                             binding.ivBook.visible(getPrefBoolean(PreferKey.welcomeShowIcon))
+                            binding.tvGzh.visible(getPrefBoolean(PreferKey.welcomeShowText))
                             window.decorView.background = BitmapDrawable(resources, it)
                             return
                         }

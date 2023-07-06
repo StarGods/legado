@@ -17,7 +17,6 @@ import android.widget.ImageView
 import android.widget.OverScroller
 import android.widget.Scroller
 import androidx.appcompat.widget.AppCompatImageView
-import io.legado.app.R
 import io.legado.app.ui.widget.image.photo.Info
 import io.legado.app.ui.widget.image.photo.OnRotateListener
 import io.legado.app.ui.widget.image.photo.RotateGestureDetector
@@ -190,11 +189,9 @@ class PhotoView @JvmOverloads constructor(
 
     @SuppressLint("UseCompatLoadingForDrawables")
     override fun setImageResource(resId: Int) {
-        var drawable: Drawable? = null
-        try {
-            drawable = resources.getDrawable(resId, null)
-        } catch (e: Exception) {
-        }
+        val drawable: Drawable? = kotlin.runCatching {
+            resources.getDrawable(resId, null)
+        }.getOrNull()
         setImageDrawable(drawable)
     }
 
@@ -917,7 +914,7 @@ class PhotoView @JvmOverloads constructor(
         var viewParent: ViewParent = target.parent
         while (viewParent is View) {
             val view: View = viewParent
-            if (view.id == R.id.content) return
+            if (view.id == androidx.constraintlayout.widget.R.id.content) return
             position[0] -= view.scrollX
             position[1] -= view.scrollY
             position[0] += view.left

@@ -1,8 +1,9 @@
 package io.legado.app.utils
 
-
-import java.security.MessageDigest
-import java.security.NoSuchAlgorithmException
+import cn.hutool.crypto.digest.DigestUtil
+import cn.hutool.crypto.digest.Digester
+import java.io.InputStream
+import kotlin.concurrent.getOrSet
 
 /**
  * 将字符串转化为MD5
@@ -10,26 +11,19 @@ import java.security.NoSuchAlgorithmException
 @Suppress("unused")
 object MD5Utils {
 
-    fun md5Encode(str: String?): String {
-        if (str == null) return ""
-        var reStr = ""
-        try {
-            val md5: MessageDigest = MessageDigest.getInstance("MD5")
-            val bytes: ByteArray = md5.digest(str.toByteArray())
-            val stringBuffer: StringBuilder = StringBuilder()
-            for (b in bytes) {
-                val bt: Int = b.toInt() and 0xff
-                if (bt < 16) {
-                    stringBuffer.append(0)
-                }
-                stringBuffer.append(Integer.toHexString(bt))
-            }
-            reStr = stringBuffer.toString()
-        } catch (e: NoSuchAlgorithmException) {
-            e.printOnDebug()
+    private val threadLocal = ThreadLocal<Digester>()
+
+    private val MD5Digester
+        get() = threadLocal.getOrSet {
+            DigestUtil.digester("MD5")
         }
 
-        return reStr
+    fun md5Encode(str: String?): String {
+        return MD5Digester.digestHex(str)
+    }
+
+    fun md5Encode(inputStream: InputStream): String {
+        return MD5Digester.digestHex(inputStream)
     }
 
     fun md5Encode16(str: String): String {

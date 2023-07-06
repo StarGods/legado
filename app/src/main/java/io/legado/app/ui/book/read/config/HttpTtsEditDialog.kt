@@ -21,7 +21,7 @@ import io.legado.app.ui.widget.dialog.TextDialog
 import io.legado.app.utils.*
 import io.legado.app.utils.viewbindingdelegate.viewBinding
 
-class HttpTtsEditDialog() : BaseDialogFragment(R.layout.dialog_http_tts_edit),
+class HttpTtsEditDialog() : BaseDialogFragment(R.layout.dialog_http_tts_edit, true),
     Toolbar.OnMenuItemClickListener {
 
     constructor(id: Long) : this() {
@@ -35,7 +35,7 @@ class HttpTtsEditDialog() : BaseDialogFragment(R.layout.dialog_http_tts_edit),
 
     override fun onStart() {
         super.onStart()
-        setLayout(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT)
+        setLayout(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT)
     }
 
     override fun onFragmentCreated(view: View, savedInstanceState: Bundle?) {
@@ -73,6 +73,7 @@ class HttpTtsEditDialog() : BaseDialogFragment(R.layout.dialog_http_tts_edit),
         binding.tvName.setText(httpTTS.name)
         binding.tvUrl.setText(httpTTS.url)
         binding.tvContentType.setText(httpTTS.contentType)
+        binding.tvConcurrentRate.setText(httpTTS.concurrentRate)
         binding.tvLoginUrl.setText(httpTTS.loginUrl)
         binding.tvLoginUi.setText(httpTTS.loginUi)
         binding.tvLoginCheckJs.setText(httpTTS.loginCheckJs)
@@ -121,6 +122,7 @@ class HttpTtsEditDialog() : BaseDialogFragment(R.layout.dialog_http_tts_edit),
             name = binding.tvName.text.toString(),
             url = binding.tvUrl.text.toString(),
             contentType = binding.tvContentType.text?.toString(),
+            concurrentRate = binding.tvConcurrentRate.text?.toString(),
             loginUrl = binding.tvLoginUrl.text?.toString(),
             loginUi = binding.tvLoginUi.text?.toString(),
             loginCheckJs = binding.tvLoginCheckJs.text?.toString(),
@@ -132,7 +134,7 @@ class HttpTtsEditDialog() : BaseDialogFragment(R.layout.dialog_http_tts_edit),
         val helpStr = String(
             requireContext().assets.open("help/httpTTSHelp.md").readBytes()
         )
-        showDialogFragment(TextDialog(helpStr, TextDialog.Mode.MD))
+        showDialogFragment(TextDialog(getString(R.string.help), helpStr, TextDialog.Mode.MD))
     }
 
 }

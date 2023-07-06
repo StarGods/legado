@@ -8,12 +8,18 @@ on:
       - '**'
       - '!**/assets/**'
       - '!**.md'
+      - '!**/ISSUE_TEMPLATE/**'
+      - '!**/modules/web/**'
   pull_request:
+    paths-ignore:
+      - '**/modules/web/**'
   workflow_dispatch:
 
 jobs:
+
   prepare:
     runs-on: ubuntu-latest
+    if: ${{ !startsWith(github.event.head_commit.message, 'Merge pull request') }}
     outputs:
       version: ${{ steps.set-ver.outputs.version }}
       versionL: ${{ steps.set-ver.outputs.versionL }}
@@ -22,22 +28,22 @@ jobs:
     steps:
       - id: set-ver
         run: |
-          echo "::set-output name=version::$(date -d "8 hour" -u +3.%y.%m%d%H)"
-          echo "::set-output name=versionL::$(date -d "8 hour" -u +3.%y.%m%d%H%M)"
+          echo "version=$(date -d "8 hour" -u +3.%y.%m%d%H)" >> $GITHUB_OUTPUT
+          echo "versionL=$(date -d "8 hour" -u +3.%y.%m%d%H%M)" >> $GITHUB_OUTPUT
       - id: check
         run: |
           if [ ${{ secrets.LANZOU_ID }} ]; then
-            echo "::set-output name=lanzou::yes"
+            echo "lanzou=yes" >> $GITHUB_OUTPUT
           fi
           if [ ${{ secrets.BOT_TOKEN }} ]; then
-            echo "::set-output name=telegram::yes"
+            echo "telegram=yes" >> $GITHUB_OUTPUT
           fi
 
   build:
     needs: prepare
     strategy:
       matrix:
-        product: [ app, google ]
+        product: [ app, google, lollipop ]
         type: [ release, releaseA ]
       fail-fast: false
     runs-on: ubuntu-latest
@@ -47,17 +53,14 @@ jobs:
       VERSION: ${{ needs.prepare.outputs.version }}
       VERSIONL: ${{ needs.prepare.outputs.versionL }}
     steps:
-      - uses: actions/checkout@v2
+      - uses: actions/checkout@v3
         with:
           fetch-depth: 0
-      - uses: actions/cache@v2
+      - name: Set up JDK 17
+        uses: actions/setup-java@v3
         with:
-          path: |
-            ~/.gradle/caches
-            ~/.gradle/wrapper
-          key: ${{ runner.os }}-legado-${{ hashFiles('**/updateLog.md') }}-${{ hashFiles('**/*.gradle*', '**/gradle-wrapper.properties') }}
-          restore-keys: |
-            ${{ runner.os }}-legado-${{ hashFiles('**/updateLog.md') }}-
+          distribution: 'temurin'
+          java-version: 17
       - name: Clear 18PlusList.txt
         run: |
           echo "清空18PlusList.txt"
@@ -70,6 +73,10 @@ jobs:
           sed '$a\RELEASE_KEY_ALIAS=legado'                 $GITHUB_WORKSPACE/gradle.properties -i
           sed '$a\RELEASE_STORE_PASSWORD=gedoor_legado'     $GITHUB_WORKSPACE/gradle.properties -i
           sed '$a\RELEASE_KEY_PASSWORD=gedoor_legado'       $GITHUB_WORKSPACE/gradle.properties -i
+
+      - name: Set up Gradle
+        uses: gradle/gradle-build-action@v2
+
       - name: Build With Gradle
         run: |
           if [ ${{ env.type }} == 'release' ]; then
@@ -90,14 +97,14 @@ jobs:
             mv "$file" ${{ github.workspace }}/apk/legado_${{ env.product }}_${{ env.VERSIONL }}_$typeName.apk
           done
       - name: Upload App To Artifact
-        uses: actions/upload-artifact@v2
+        uses: actions/upload-artifact@v3
         with:
           name: legado.${{ env.product }}.${{ env.type }}
           path: ${{ github.workspace }}/apk/*.apk
 
   lanzou:
     needs: [ prepare, build ]
-    if: ${{ needs.prepare.outputs.lanzou }}
+    if: ${{ github.event_name != 'pull_request' && needs.prepare.outputs.lanzou == 'yes' }}
     runs-on: ubuntu-latest
     env:
       # 登录蓝奏云后在控制台运行document.cookie
@@ -106,8 +113,8 @@ jobs:
       # 蓝奏云里的文件夹ID（阅读3测试版:2670621）
       LANZOU_FOLDER_ID: '2670621'
     steps:
-      - uses: actions/checkout@v2
-      - uses: actions/download-artifact@v2
+      - uses: actions/checkout@v3
+      - uses: actions/download-artifact@v3
         with:
           path: apk/
       - working-directory: apk/
@@ -122,10 +129,10 @@ jobs:
   test_Branch:
     needs: [ prepare, build ]
     runs-on: ubuntu-latest
-    if: ${{ github.actor == 'gedoor' }}
+    if: ${{ github.event_name != 'pull_request' && github.actor == 'gedoor' }}
     steps:
-      - uses: actions/checkout@v2
-      - uses: actions/download-artifact@v2
+      - uses: actions/checkout@v3
+      - uses: actions/download-artifact@v3
         with:
           path: apk/
       - working-directory: apk/
@@ -144,14 +151,14 @@ jobs:
 
   telegram:
     needs: [ prepare, build ]
-    if: ${{ needs.prepare.outputs.telegram }}
+    if: ${{ github.event_name != 'pull_request' && needs.prepare.outputs.telegram == 'yes' }}
     runs-on: ubuntu-latest
     env:
       CHANNEL_ID: ${{ secrets.CHANNEL_ID }}
       BOT_TOKEN: ${{ secrets.BOT_TOKEN }}
     steps:
-      - uses: actions/checkout@v2
-      - uses: actions/download-artifact@v2
+      - uses: actions/checkout@v3
+      - uses: actions/download-artifact@v3
         with:
           path: apk/
       - working-directory: apk/

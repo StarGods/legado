@@ -33,12 +33,12 @@ class RssSourceDebugActivity : VMBaseActivity<ActivitySourceDebugBinding, RssSou
             launch {
                 adapter.addItem(msg)
                 if (state == -1 || state == 1000) {
-                    binding.rotateLoading.hide()
+                    binding.rotateLoading.gone()
                 }
             }
         }
         viewModel.initData(intent.getStringExtra("key")) {
-            startSearch()
+            startDebug()
         }
     }
 
@@ -49,8 +49,8 @@ class RssSourceDebugActivity : VMBaseActivity<ActivitySourceDebugBinding, RssSou
 
     override fun onCompatOptionsItemSelected(item: MenuItem): Boolean {
         when (item.itemId) {
-            R.id.menu_list_src -> showDialogFragment(TextDialog(viewModel.listSrc))
-            R.id.menu_content_src -> showDialogFragment(TextDialog(viewModel.contentSrc))
+            R.id.menu_list_src -> showDialogFragment(TextDialog("Html", viewModel.listSrc))
+            R.id.menu_content_src -> showDialogFragment(TextDialog("Html", viewModel.contentSrc))
         }
         return super.onCompatOptionsItemSelected(item)
     }
@@ -65,12 +65,11 @@ class RssSourceDebugActivity : VMBaseActivity<ActivitySourceDebugBinding, RssSou
         binding.titleBar.findViewById<SearchView>(R.id.search_view).gone()
     }
 
-    private fun startSearch() {
+    private fun startDebug() {
         adapter.clearItems()
-        viewModel.startDebug({
-            binding.rotateLoading.show()
-        }, {
-            toastOnUi("未获取到源")
-        })
+        viewModel.rssSource?.let {
+            binding.rotateLoading.visible()
+            viewModel.startDebug(it)
+        } ?: toastOnUi(R.string.error_no_source)
     }
 }

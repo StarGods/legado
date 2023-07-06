@@ -56,7 +56,9 @@ class VerticalSeekBar @JvmOverloads constructor(context: Context, attrs: Attribu
         }
 
     init {
-        applyTint(context.accentColor)
+        if (!isInEditMode) {
+            applyTint(context.accentColor)
+        }
         ViewCompat.setLayoutDirection(this, ViewCompat.LAYOUT_DIRECTION_LTR)
 
         if (attrs != null) {
@@ -69,7 +71,7 @@ class VerticalSeekBar @JvmOverloads constructor(context: Context, attrs: Attribu
         }
     }
 
-    override fun setThumb(thumb: Drawable) {
+    override fun setThumb(thumb: Drawable?) {
         mThumb = thumb
         super.setThumb(thumb)
     }

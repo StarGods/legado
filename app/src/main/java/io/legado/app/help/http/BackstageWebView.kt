@@ -1,16 +1,19 @@
 package io.legado.app.help.http
 
 import android.annotation.SuppressLint
+import android.net.http.SslError
 import android.os.Handler
 import android.os.Looper
 import android.util.AndroidRuntimeException
 import android.webkit.CookieManager
+import android.webkit.SslErrorHandler
 import android.webkit.WebSettings
 import android.webkit.WebView
 import android.webkit.WebViewClient
 import io.legado.app.constant.AppConst
 import io.legado.app.exception.NoStackTraceException
 import io.legado.app.help.config.AppConfig
+import io.legado.app.help.coroutine.Coroutine
 import io.legado.app.utils.runOnUI
 import kotlinx.coroutines.Runnable
 import kotlinx.coroutines.suspendCancellableCoroutine
@@ -18,6 +21,7 @@ import org.apache.commons.text.StringEscapeUtils
 import splitties.init.appCtx
 import java.lang.ref.WeakReference
 import kotlin.coroutines.resume
+import kotlin.coroutines.resumeWithException
 
 /**
  * 后台webView
@@ -42,7 +46,7 @@ class BackstageWebView(
                 destroy()
             }
         }
-        callback = object : BackstageWebView.Callback() {
+        callback = object : Callback() {
             override fun onResult(response: StrResponse) {
                 if (!block.isCompleted)
                     block.resume(response)
@@ -50,14 +54,14 @@ class BackstageWebView(
 
             override fun onError(error: Throwable) {
                 if (!block.isCompleted)
-                    block.cancel(error)
+                    block.resumeWithException(error)
             }
         }
         runOnUI {
             try {
                 load()
             } catch (error: Throwable) {
-                block.cancel(error)
+                block.resumeWithException(error)
             }
         }
     }
@@ -77,6 +81,7 @@ class BackstageWebView(
                 } else {
                     webView.loadDataWithBaseURL(url, html, "text/html", getEncoding(), url)
                 }
+
                 else -> if (headerMap == null) {
                     webView.loadUrl(url!!)
                 } else {
@@ -128,10 +133,24 @@ class BackstageWebView(
 
     private inner class HtmlWebViewClient : WebViewClient() {
 
+        var runnable: EvalJsRunnable? = null
+
         override fun onPageFinished(view: WebView, url: String) {
             setCookie(url)
-            val runnable = EvalJsRunnable(view, url, getJs())
-            mHandler.postDelayed(runnable, 1000)
+            if (runnable == null) {
+                runnable = EvalJsRunnable(view, url, getJs())
+            }
+            mHandler.removeCallbacks(runnable!!)
+            mHandler.postDelayed(runnable!!, 1000)
+        }
+
+        @SuppressLint("WebViewClientOnReceivedSslError")
+        override fun onReceivedSslError(
+            view: WebView?,
+            handler: SslErrorHandler?,
+            error: SslError?
+        ) {
+            handler?.proceed()
         }
 
     }
@@ -145,29 +164,34 @@ class BackstageWebView(
         private val mWebView: WeakReference<WebView> = WeakReference(webView)
         override fun run() {
             mWebView.get()?.evaluateJavascript(mJavaScript) {
-                if (it.isNotEmpty() && it != "null") {
-                    val content = StringEscapeUtils.unescapeJson(it)
-                        .replace("^\"|\"$".toRegex(), "")
-                    try {
-                        val response = StrResponse(url, content)
-                        callback?.onResult(response)
-                    } catch (e: Exception) {
-                        callback?.onError(e)
-                    }
-                    mHandler.removeCallbacks(this)
-                    destroy()
-                    return@evaluateJavascript
-                }
-                if (retry > 30) {
-                    callback?.onError(NoStackTraceException("js执行超时"))
-                    mHandler.removeCallbacks(this)
-                    destroy()
-                    return@evaluateJavascript
-                }
-                retry++
-                mHandler.removeCallbacks(this)
-                mHandler.postDelayed(this, 1000)
+                handleResult(it)
             }
+        }
+
+        private fun handleResult(result: String) = Coroutine.async {
+            if (result.isNotEmpty() && result != "null") {
+                val content = StringEscapeUtils.unescapeJson(result)
+                    .replace(quoteRegex, "")
+                try {
+                    val response = StrResponse(url, content)
+                    callback?.onResult(response)
+                } catch (e: Exception) {
+                    callback?.onError(e)
+                }
+                mHandler.post {
+                    destroy()
+                }
+                return@async
+            }
+            if (retry > 30) {
+                callback?.onError(NoStackTraceException("js执行超时"))
+                mHandler.post {
+                    destroy()
+                }
+                return@async
+            }
+            retry++
+            mHandler.postDelayed(this@EvalJsRunnable, 1000)
         }
     }
 
@@ -196,6 +220,15 @@ class BackstageWebView(
             }
         }
 
+        @SuppressLint("WebViewClientOnReceivedSslError")
+        override fun onReceivedSslError(
+            view: WebView?,
+            handler: SslErrorHandler?,
+            error: SslError?
+        ) {
+            handler?.proceed()
+        }
+
     }
 
     private class LoadJsRunnable(
@@ -210,6 +243,7 @@ class BackstageWebView(
 
     companion object {
         const val JS = "document.documentElement.outerHTML"
+        private val quoteRegex = "^\"|\"$".toRegex()
     }
 
     abstract class Callback {

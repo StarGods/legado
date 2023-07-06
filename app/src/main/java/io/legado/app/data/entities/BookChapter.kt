@@ -7,6 +7,7 @@ import androidx.room.Ignore
 import androidx.room.Index
 import com.github.liuyueyi.quick.transfer.ChineseUtils
 import io.legado.app.R
+import io.legado.app.constant.AppLog
 import io.legado.app.constant.AppPattern
 import io.legado.app.data.appDb
 import io.legado.app.exception.RegexTimeoutException
@@ -15,6 +16,7 @@ import io.legado.app.help.config.AppConfig
 import io.legado.app.model.analyzeRule.AnalyzeUrl
 import io.legado.app.model.analyzeRule.RuleDataInterface
 import io.legado.app.utils.*
+import kotlinx.coroutines.CancellationException
 import kotlinx.parcelize.IgnoredOnParcel
 import kotlinx.parcelize.Parcelize
 import splitties.init.appCtx
@@ -57,6 +59,12 @@ data class BookChapter(
         GSON.fromJsonObject<HashMap<String, String>>(variable).getOrNull() ?: hashMapOf()
     }
 
+    @delegate:Ignore
+    @IgnoredOnParcel
+    private val titleMD5: String by lazy {
+        MD5Utils.md5Encode16(title)
+    }
+
     override fun putVariable(key: String, value: String?): Boolean {
         if (super.putVariable(key, value)) {
             variable = GSON.toJson(variableMap)
@@ -81,7 +89,11 @@ data class BookChapter(
         return false
     }
 
-    suspend fun getDisplayTitle(
+    fun primaryStr(): String {
+        return bookUrl + url
+    }
+
+    fun getDisplayTitle(
         replaceRules: List<ReplaceRule>? = null,
         useReplace: Boolean = true,
         chineseConvert: Boolean = true,
@@ -93,12 +105,16 @@ data class BookChapter(
                 2 -> displayTitle = ChineseUtils.s2t(displayTitle)
             }
         }
-        if (useReplace && replaceRules != null) {
+        if (useReplace && replaceRules != null) kotlin.run {
             replaceRules.forEach { item ->
                 if (item.pattern.isNotEmpty()) {
                     try {
                         val mDisplayTitle = if (item.isRegex) {
-                            displayTitle.replace(item.pattern.toRegex(), item.replacement, 1000)
+                            displayTitle.replace(
+                                item.pattern.toRegex(),
+                                item.replacement,
+                                item.getValidTimeoutMillisecond()
+                            )
                         } else {
                             displayTitle.replace(item.pattern, item.replacement)
                         }
@@ -108,7 +124,10 @@ data class BookChapter(
                     } catch (e: RegexTimeoutException) {
                         item.isEnabled = false
                         appDb.replaceRuleDao.update(item)
+                    } catch (e: CancellationException) {
+                        return@run
                     } catch (e: Exception) {
+                        AppLog.put("${item.name}替换出错\n替换内容\n${displayTitle}", e)
                         appCtx.toastOnUi("${item.name}替换出错")
                     }
                 }
@@ -135,9 +154,11 @@ data class BookChapter(
     }
 
     @Suppress("unused")
-    fun getFileName(): String = String.format("%05d-%s.nb", index, MD5Utils.md5Encode16(title))
+    fun getFileName(suffix: String = "nb"): String =
+        String.format("%05d-%s.%s", index, titleMD5, suffix)
+
 
     @Suppress("unused")
-    fun getFontName(): String = String.format("%05d-%s.ttf", index, MD5Utils.md5Encode16(title))
+    fun getFontName(): String = String.format("%05d-%s.ttf", index, titleMD5)
 }
 

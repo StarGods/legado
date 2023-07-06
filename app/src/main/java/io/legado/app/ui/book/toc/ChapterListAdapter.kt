@@ -1,6 +1,8 @@
 package io.legado.app.ui.book.toc
 
 import android.content.Context
+import android.os.Handler
+import android.os.Looper
 import android.view.ViewGroup
 import androidx.recyclerview.widget.DiffUtil
 import io.legado.app.R
@@ -9,7 +11,7 @@ import io.legado.app.base.adapter.ItemViewHolder
 import io.legado.app.data.entities.Book
 import io.legado.app.data.entities.BookChapter
 import io.legado.app.databinding.ItemChapterListBinding
-import io.legado.app.help.ContentProcessor
+import io.legado.app.help.book.ContentProcessor
 import io.legado.app.help.config.AppConfig
 import io.legado.app.help.coroutine.Coroutine
 import io.legado.app.lib.theme.ThemeUtils
@@ -18,9 +20,7 @@ import io.legado.app.utils.getCompatColor
 import io.legado.app.utils.gone
 import io.legado.app.utils.longToastOnUi
 import io.legado.app.utils.visible
-import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.isActive
-import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.*
 import java.util.concurrent.ConcurrentHashMap
 
 class ChapterListAdapter(context: Context, val callback: Callback) :
@@ -28,6 +28,7 @@ class ChapterListAdapter(context: Context, val callback: Callback) :
 
     val cacheFileNames = hashSetOf<String>()
     private val displayTitleMap = ConcurrentHashMap<String, String>()
+    private val handler = Handler(Looper.getMainLooper())
 
     override val diffItemCallback: DiffUtil.ItemCallback<BookChapter>
         get() = object : DiffUtil.ItemCallback<BookChapter>() {
@@ -54,17 +55,10 @@ class ChapterListAdapter(context: Context, val callback: Callback) :
 
         }
 
-    private val replaceRules
-        get() = callback.book?.let {
-            ContentProcessor.get(it.name, it.origin).getTitleReplaceRules()
-        }
-    private val useReplace
-        get() = AppConfig.tocUiUseReplace && callback.book?.getUseReplaceRule() == true
     private var upDisplayTileJob: Coroutine<*>? = null
 
     override fun onCurrentListChanged() {
         super.onCurrentListChanged()
-        upDisplayTitle()
         callback.onListChanged()
     }
 
@@ -73,36 +67,50 @@ class ChapterListAdapter(context: Context, val callback: Callback) :
         displayTitleMap.clear()
     }
 
-    fun upDisplayTitle() {
+    fun upDisplayTitles(startIndex: Int) {
         upDisplayTileJob?.cancel()
         upDisplayTileJob = Coroutine.async(callback.scope) {
-            val replaceRules = replaceRules
-            val useReplace = useReplace
-            getItems().forEach {
-                if (!isActive) {
-                    return@async
+            val book = callback.book ?: return@async
+            val replaceRules = ContentProcessor.get(book.name, book.origin).getTitleReplaceRules()
+            val useReplace = AppConfig.tocUiUseReplace && book.getUseReplaceRule()
+            val items = getItems()
+            launch {
+                for (i in startIndex until items.size) {
+                    val item = items[i]
+                    if (displayTitleMap[item.title] == null) {
+                        ensureActive()
+                        val displayTitle = item.getDisplayTitle(replaceRules, useReplace)
+                        ensureActive()
+                        displayTitleMap[item.title] = displayTitle
+                        handler.post {
+                            notifyItemChanged(i, true)
+                        }
+                    }
                 }
-                if (displayTitleMap[it.title] == null) {
-                    displayTitleMap[it.title] = it.getDisplayTitle(replaceRules, useReplace)
+            }
+            launch {
+                for (i in startIndex downTo 0) {
+                    val item = items[i]
+                    if (displayTitleMap[item.title] == null) {
+                        ensureActive()
+                        val displayTitle = item.getDisplayTitle(replaceRules, useReplace)
+                        ensureActive()
+                        displayTitleMap[item.title] = displayTitle
+                        handler.post {
+                            notifyItemChanged(i, true)
+                        }
+                    }
                 }
             }
         }
     }
 
-    override fun getViewBinding(parent: ViewGroup): ItemChapterListBinding {
-        return ItemChapterListBinding.inflate(inflater, parent, false)
+    private fun getDisplayTitle(chapter: BookChapter): String {
+        return displayTitleMap[chapter.title] ?: chapter.title
     }
 
-    private fun getDisplayTile(chapter: BookChapter): String {
-        var displayTitle = displayTitleMap[chapter.title]
-        if (displayTitle != null) {
-            return displayTitle
-        }
-        displayTitle = runBlocking {
-            chapter.getDisplayTitle(replaceRules, useReplace)
-        }
-        displayTitleMap[chapter.title] = displayTitle
-        return displayTitle
+    override fun getViewBinding(parent: ViewGroup): ItemChapterListBinding {
+        return ItemChapterListBinding.inflate(inflater, parent, false)
     }
 
     override fun convert(
@@ -113,14 +121,16 @@ class ChapterListAdapter(context: Context, val callback: Callback) :
     ) {
         binding.run {
             val isDur = callback.durChapterIndex() == item.index
-            val cached = callback.isLocalBook || cacheFileNames.contains(item.getFileName())
+            val cached = callback.isLocalBook
+                    || item.isVolume
+                    || cacheFileNames.contains(item.getFileName())
             if (payloads.isEmpty()) {
                 if (isDur) {
                     tvChapterName.setTextColor(context.accentColor)
                 } else {
                     tvChapterName.setTextColor(context.getCompatColor(R.color.primaryText))
                 }
-                tvChapterName.text = getDisplayTile(item)
+                tvChapterName.text = getDisplayTitle(item)
                 if (item.isVolume) {
                     //卷名，如第一卷 突出显示
                     tvChapterItem.setBackgroundColor(context.getCompatColor(R.color.btn_bg_press))
@@ -138,6 +148,7 @@ class ChapterListAdapter(context: Context, val callback: Callback) :
                 }
                 upHasCache(binding, isDur, cached)
             } else {
+                tvChapterName.text = getDisplayTitle(item)
                 upHasCache(binding, isDur, cached)
             }
         }
@@ -150,8 +161,8 @@ class ChapterListAdapter(context: Context, val callback: Callback) :
             }
         }
         holder.itemView.setOnLongClickListener {
-            getItem(holder.layoutPosition)?.let {
-                context.longToastOnUi(getDisplayTile(it))
+            getItem(holder.layoutPosition)?.let { item ->
+                context.longToastOnUi(getDisplayTitle(item))
             }
             true
         }

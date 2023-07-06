@@ -6,27 +6,33 @@ import android.content.SharedPreferences
 import android.content.pm.PackageManager
 import android.os.Bundle
 import android.view.View
+import androidx.core.view.postDelayed
 import androidx.fragment.app.activityViewModels
 import androidx.preference.ListPreference
 import androidx.preference.Preference
 import io.legado.app.R
-import io.legado.app.base.BasePreferenceFragment
+import io.legado.app.constant.AppConst
 import io.legado.app.constant.EventBus
 import io.legado.app.constant.PreferKey
 import io.legado.app.databinding.DialogEditTextBinding
 import io.legado.app.help.config.AppConfig
+import io.legado.app.help.config.LocalConfig
 import io.legado.app.lib.dialogs.alert
+import io.legado.app.lib.prefs.fragment.PreferenceFragment
 import io.legado.app.lib.theme.primaryColor
 import io.legado.app.model.CheckSource
 import io.legado.app.receiver.SharedReceiverActivity
 import io.legado.app.service.WebService
-import io.legado.app.ui.document.HandleFileContract
+import io.legado.app.ui.book.read.page.provider.ImageProvider
+import io.legado.app.ui.file.HandleFileContract
 import io.legado.app.ui.widget.number.NumberPickerDialog
 import io.legado.app.utils.*
 import splitties.init.appCtx
 
-
-class OtherConfigFragment : BasePreferenceFragment(),
+/**
+ * 其它设置
+ */
+class OtherConfigFragment : PreferenceFragment(),
     SharedPreferences.OnSharedPreferenceChangeListener {
 
     private val viewModel by activityViewModels<ConfigViewModel>()
@@ -44,7 +50,7 @@ class OtherConfigFragment : BasePreferenceFragment(),
     override fun onCreatePreferences(savedInstanceState: Bundle?, rootKey: String?) {
         putPrefBoolean(PreferKey.processText, isProcessTextEnabled())
         addPreferencesFromResource(R.xml.pref_config_other)
-        if (AppConfig.isGooglePlay) {
+        if (AppConst.isPlayChannel) {
             preferenceScreen.removePreferenceRecursively("Cronet")
         }
         upPreferenceSummary(PreferKey.userAgent, AppConfig.userAgent)
@@ -55,6 +61,8 @@ class OtherConfigFragment : BasePreferenceFragment(),
             upPreferenceSummary(PreferKey.defaultBookTreeUri, it)
         }
         upPreferenceSummary(PreferKey.checkSource, CheckSource.summary)
+        upPreferenceSummary(PreferKey.bitmapCacheSize, AppConfig.bitmapCacheSize.toString())
+        upPreferenceSummary(PreferKey.sourceEditMaxLine, AppConfig.sourceEditMaxLine.toString())
     }
 
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
@@ -79,7 +87,7 @@ class OtherConfigFragment : BasePreferenceFragment(),
             PreferKey.preDownloadNum -> NumberPickerDialog(requireContext())
                 .setTitle(getString(R.string.pre_download))
                 .setMaxValue(9999)
-                .setMinValue(1)
+                .setMinValue(0)
                 .setValue(AppConfig.preDownloadNum)
                 .show {
                     AppConfig.preDownloadNum = it
@@ -103,6 +111,31 @@ class OtherConfigFragment : BasePreferenceFragment(),
             PreferKey.cleanCache -> clearCache()
             PreferKey.uploadRule -> showDialogFragment<DirectLinkUploadConfig>()
             PreferKey.checkSource -> showDialogFragment<CheckSourceConfig>()
+            PreferKey.bitmapCacheSize -> {
+                NumberPickerDialog(requireContext())
+                    .setTitle(getString(R.string.bitmap_cache_size))
+                    .setMaxValue(9999)
+                    .setMinValue(1)
+                    .setValue(AppConfig.bitmapCacheSize)
+                    .show {
+                        AppConfig.bitmapCacheSize = it
+                        ImageProvider.bitmapLruCache.resize(ImageProvider.cacheSize)
+                    }
+            }
+            PreferKey.sourceEditMaxLine -> {
+                NumberPickerDialog(requireContext())
+                    .setTitle(getString(R.string.source_edit_text_max_line))
+                    .setMaxValue(Int.MAX_VALUE)
+                    .setMinValue(10)
+                    .setValue(AppConfig.sourceEditMaxLine)
+                    .show {
+                        AppConfig.sourceEditMaxLine = it
+                    }
+            }
+
+            PreferKey.clearWebViewData -> clearWebViewData()
+            "localPassword" -> alertLocalPassword()
+            PreferKey.shrinkDatabase -> shrinkDatabase()
         }
         return super.onPreferenceTreeClick(preference)
     }
@@ -131,14 +164,20 @@ class OtherConfigFragment : BasePreferenceFragment(),
                 setProcessTextEnable(it.getBoolean(key, true))
             }
             PreferKey.showDiscovery, PreferKey.showRss -> postEvent(EventBus.NOTIFY_MAIN, true)
-            PreferKey.language -> listView.postDelayed({
+            PreferKey.language -> listView.postDelayed(1000) {
                 appCtx.restart()
-            }, 1000)
+            }
             PreferKey.userAgent -> listView.post {
                 upPreferenceSummary(PreferKey.userAgent, AppConfig.userAgent)
             }
             PreferKey.checkSource -> listView.post {
                 upPreferenceSummary(PreferKey.checkSource, CheckSource.summary)
+            }
+            PreferKey.bitmapCacheSize -> {
+                upPreferenceSummary(key, AppConfig.bitmapCacheSize.toString())
+            }
+            PreferKey.sourceEditMaxLine -> {
+                upPreferenceSummary(key, AppConfig.sourceEditMaxLine.toString())
             }
         }
     }
@@ -150,6 +189,10 @@ class OtherConfigFragment : BasePreferenceFragment(),
                 getString(R.string.pre_download_s, value)
             PreferKey.threadCount -> preference.summary = getString(R.string.threads_num, value)
             PreferKey.webPort -> preference.summary = getString(R.string.web_port_summary, value)
+            PreferKey.bitmapCacheSize -> preference.summary =
+                getString(R.string.bitmap_cache_size_summary, value)
+            PreferKey.sourceEditMaxLine -> preference.summary =
+                getString(R.string.source_edit_max_line_summary, value)
             else -> if (preference is ListPreference) {
                 val index = preference.findIndexOfValue(value)
                 // Set the summary to reflect the new value.
@@ -192,6 +235,24 @@ class OtherConfigFragment : BasePreferenceFragment(),
         }
     }
 
+    private fun shrinkDatabase() {
+        alert(R.string.sure, R.string.shrink_database) {
+            okButton {
+                viewModel.shrinkDatabase()
+            }
+            noButton()
+        }
+    }
+
+    private fun clearWebViewData() {
+        alert(R.string.clear_webview_data, R.string.sure_del) {
+            okButton {
+                viewModel.clearWebViewData()
+            }
+            noButton()
+        }
+    }
+
     private fun isProcessTextEnabled(): Boolean {
         return packageManager.getComponentEnabledSetting(componentName) != PackageManager.COMPONENT_ENABLED_STATE_DISABLED
     }
@@ -207,6 +268,21 @@ class OtherConfigFragment : BasePreferenceFragment(),
                 componentName,
                 PackageManager.COMPONENT_ENABLED_STATE_DISABLED, PackageManager.DONT_KILL_APP
             )
+        }
+    }
+
+    private fun alertLocalPassword() {
+        context?.alert(R.string.set_local_password, R.string.set_local_password_summary) {
+            val editTextBinding = DialogEditTextBinding.inflate(layoutInflater).apply {
+                editView.hint = "password"
+            }
+            customView {
+                editTextBinding.root
+            }
+            okButton {
+                LocalConfig.password = editTextBinding.editView.text.toString()
+            }
+            cancelButton()
         }
     }
 

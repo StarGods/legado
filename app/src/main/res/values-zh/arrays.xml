@@ -4,6 +4,7 @@
         <item>文本</item>
         <item>音频</item>
         <item>图片</item>
+        <item>文件</item>
     </string-array>
 
     <string-array name="group_style">
@@ -22,6 +23,13 @@
         <item>亮色主题</item>
         <item>暗色主题</item>
         <item>E-Ink(墨水屏)</item>
+    </string-array>
+
+    <string-array name="double_page_title">
+        <item>全局单页</item>
+        <item>全局双页</item>
+        <item>横屏双页</item>
+        <item>平板/横屏双页</item>
     </string-array>
 
     <string-array name="NavBarColors">
@@ -69,7 +77,8 @@
         <item>电量</item>
         <item>电量%</item>
         <item>页数</item>
-        <item>进度</item>
+        <item>进度(%)</item>
+        <item>进度(xx/yyy)</item>
         <item>页数及进度</item>
         <item>时间及电量</item>
         <item>时间及电量%</item>

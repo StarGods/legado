@@ -18,6 +18,7 @@ import splitties.init.appCtx
 
 import java.io.File
 
+@Keep
 object ThemeConfig {
     const val configFileName = "themeConfig.json"
     val configFilePath = FileUtils.getPath(appCtx.filesDir, configFileName)
@@ -38,7 +39,6 @@ object ThemeConfig {
     }
 
     fun applyDayNight(context: Context) {
-        ReadBookConfig.upBg()
         applyTheme(context)
         initNightMode()
         BookCover.upDefaultCover()
@@ -256,6 +256,25 @@ object ThemeConfig {
         var accentColor: String,
         var backgroundColor: String,
         var bottomBackground: String
-    )
+    ) {
+
+        override fun hashCode(): Int {
+            return GSON.toJson(this).hashCode()
+        }
+
+        override fun equals(other: Any?): Boolean {
+            other ?: return false
+            if (other is Config) {
+                return other.themeName == themeName
+                        && other.isNightTheme == isNightTheme
+                        && other.primaryColor == primaryColor
+                        && other.accentColor == accentColor
+                        && other.backgroundColor == backgroundColor
+                        && other.bottomBackground == bottomBackground
+            }
+            return false
+        }
+
+    }
 
 }

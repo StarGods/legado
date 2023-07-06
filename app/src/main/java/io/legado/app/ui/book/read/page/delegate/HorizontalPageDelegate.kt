@@ -11,13 +11,14 @@ abstract class HorizontalPageDelegate(readView: ReadView) : PageDelegate(readVie
     protected var curBitmap: Bitmap? = null
     protected var prevBitmap: Bitmap? = null
     protected var nextBitmap: Bitmap? = null
+    protected val slopSquare by lazy { readView.slopSquare * readView.slopSquare }
 
     override fun setDirection(direction: PageDirection) {
         super.setDirection(direction)
         setBitmap()
     }
 
-    private fun setBitmap() {
+    open fun setBitmap() {
         when (mDirection) {
             PageDirection.PREV -> {
                 prevBitmap?.recycle()
@@ -50,7 +51,6 @@ abstract class HorizontalPageDelegate(readView: ReadView) : PageDelegate(readVie
     }
 
     private fun onScroll(event: MotionEvent) {
-
         val action: Int = event.action
         val pointerUp =
             action and MotionEvent.ACTION_MASK == MotionEvent.ACTION_POINTER_UP
@@ -72,7 +72,7 @@ abstract class HorizontalPageDelegate(readView: ReadView) : PageDelegate(readVie
             val deltaX = (focusX - startX).toInt()
             val deltaY = (focusY - startY).toInt()
             val distance = deltaX * deltaX + deltaY * deltaY
-            isMoved = distance > readView.slopSquare
+            isMoved = distance > slopSquare
             if (isMoved) {
                 if (sumX - startX > 0) {
                     //如果上一页不存在
@@ -119,7 +119,11 @@ abstract class HorizontalPageDelegate(readView: ReadView) : PageDelegate(readVie
         abortAnim()
         if (!hasNext()) return
         setDirection(PageDirection.NEXT)
-        readView.setStartPoint(viewWidth.toFloat(), 0f, false)
+        val y = when {
+            viewHeight / 2 < startY -> viewHeight.toFloat() * 0.9f
+            else -> 1f
+        }
+        readView.setStartPoint(viewWidth.toFloat() * 0.9f, y, false)
         onAnimStart(animationSpeed)
     }
 
@@ -127,7 +131,7 @@ abstract class HorizontalPageDelegate(readView: ReadView) : PageDelegate(readVie
         abortAnim()
         if (!hasPrev()) return
         setDirection(PageDirection.PREV)
-        readView.setStartPoint(0f, 0f, false)
+        readView.setStartPoint(0f, viewHeight.toFloat(), false)
         onAnimStart(animationSpeed)
     }
 

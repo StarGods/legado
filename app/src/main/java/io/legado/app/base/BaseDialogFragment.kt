@@ -1,10 +1,14 @@
 package io.legado.app.base
 
+import android.content.DialogInterface
+import android.content.DialogInterface.OnDismissListener
 import android.os.Bundle
 import android.view.View
 import androidx.annotation.LayoutRes
 import androidx.fragment.app.DialogFragment
 import androidx.fragment.app.FragmentManager
+import io.legado.app.R
+import io.legado.app.constant.AppLog
 import io.legado.app.help.coroutine.Coroutine
 import io.legado.app.lib.theme.ThemeStore
 import kotlinx.coroutines.CoroutineScope
@@ -14,12 +18,32 @@ import kotlinx.coroutines.cancel
 import kotlin.coroutines.CoroutineContext
 
 
-abstract class BaseDialogFragment(@LayoutRes layoutID: Int) : DialogFragment(layoutID),
-    CoroutineScope by MainScope() {
+abstract class BaseDialogFragment(
+    @LayoutRes layoutID: Int,
+    private val adaptationSoftKeyboard: Boolean = false
+) : DialogFragment(layoutID), CoroutineScope by MainScope() {
+
+    private var onDismissListener: OnDismissListener? = null
+
+    fun setOnDismissListener(onDismissListener: OnDismissListener?) {
+        this.onDismissListener = onDismissListener
+    }
+
+    override fun onStart() {
+        super.onStart()
+        if (adaptationSoftKeyboard) {
+            dialog?.window?.setBackgroundDrawableResource(R.color.transparent)
+        }
+    }
 
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
         super.onViewCreated(view, savedInstanceState)
-        view.setBackgroundColor(ThemeStore.backgroundColor())
+        if (adaptationSoftKeyboard) {
+            view.findViewById<View>(R.id.vw_bg)?.setOnClickListener(null)
+            view.setOnClickListener { dismiss() }
+        } else {
+            view.setBackgroundColor(ThemeStore.backgroundColor())
+        }
         onFragmentCreated(view, savedInstanceState)
         observeLiveBus()
     }
@@ -31,7 +55,14 @@ abstract class BaseDialogFragment(@LayoutRes layoutID: Int) : DialogFragment(lay
             //在每个add事务前增加一个remove事务，防止连续的add
             manager.beginTransaction().remove(this).commit()
             super.show(manager, tag)
+        }.onFailure {
+            AppLog.put("显示对话框失败 tag:$tag", it)
         }
+    }
+
+    override fun onDismiss(dialog: DialogInterface) {
+        super.onDismiss(dialog)
+        onDismissListener?.onDismiss(dialog)
     }
 
     override fun onDestroy() {

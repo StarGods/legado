@@ -3,15 +3,19 @@ package io.legado.app.ui.association
 import android.app.Application
 import androidx.lifecycle.MutableLiveData
 import io.legado.app.base.BaseViewModel
+import io.legado.app.constant.AppConst
+import io.legado.app.constant.AppLog
 import io.legado.app.constant.AppPattern
 import io.legado.app.data.appDb
 import io.legado.app.data.entities.ReplaceRule
+import io.legado.app.exception.NoStackTraceException
 import io.legado.app.help.ReplaceAnalyzer
-import io.legado.app.help.config.AppConfig
 import io.legado.app.help.http.newCallResponseBody
 import io.legado.app.help.http.okHttpClient
 import io.legado.app.help.http.text
 import io.legado.app.utils.isAbsUrl
+import io.legado.app.utils.isJsonArray
+import io.legado.app.utils.isJsonObject
 import io.legado.app.utils.splitNotBlank
 
 class ImportReplaceRuleViewModel(app: Application) : BaseViewModel(app) {
@@ -48,18 +52,10 @@ class ImportReplaceRuleViewModel(app: Application) : BaseViewModel(app) {
     fun importSelect(finally: () -> Unit) {
         execute {
             val group = groupName?.trim()
-            val keepName = AppConfig.importKeepName
             val selectRules = arrayListOf<ReplaceRule>()
             selectStatus.forEachIndexed { index, b ->
                 if (b) {
                     val rule = allRules[index]
-                    if (keepName) {
-                        checkRules[index]?.let {
-                            rule.name = it.name
-                            rule.group = it.group
-                            rule.order = it.order
-                        }
-                    }
                     if (!group.isNullOrEmpty()) {
                         if (isAddGroup) {
                             val groups = linkedSetOf<String>()
@@ -83,21 +79,40 @@ class ImportReplaceRuleViewModel(app: Application) : BaseViewModel(app) {
 
     fun import(text: String) {
         execute {
-            if (text.isAbsUrl()) {
-                okHttpClient.newCallResponseBody {
-                    url(text)
-                }.text("utf-8").let {
-                    val rules = ReplaceAnalyzer.jsonToReplaceRules(it)
-                    allRules.addAll(rules)
-                }
-            } else {
-                val rules = ReplaceAnalyzer.jsonToReplaceRules(text)
-                allRules.addAll(rules)
-            }
+            importAwait(text.trim())
         }.onError {
-            errorLiveData.postValue(it.localizedMessage ?: "ERROR")
+            errorLiveData.postValue("ImportError:${it.localizedMessage}")
+            AppLog.put("ImportError:${it.localizedMessage}", it)
         }.onSuccess {
             comparisonSource()
+        }
+    }
+
+    private suspend fun importAwait(text: String) {
+        when {
+            text.isAbsUrl() -> importUrl(text)
+            text.isJsonArray() -> {
+                val rules = ReplaceAnalyzer.jsonToReplaceRules(text).getOrThrow()
+                allRules.addAll(rules)
+            }
+            text.isJsonObject() -> {
+                val rule = ReplaceAnalyzer.jsonToReplaceRule(text).getOrThrow()
+                allRules.add(rule)
+            }
+            else -> throw NoStackTraceException("格式不对")
+        }
+    }
+
+    private suspend fun importUrl(url: String) {
+        okHttpClient.newCallResponseBody {
+            if (url.endsWith("#requestWithoutUA")) {
+                url(url.substringBeforeLast("#requestWithoutUA"))
+                header(AppConst.UA_NAME, "null")
+            } else {
+                url(url)
+            }
+        }.text("utf-8").let {
+            importAwait(it)
         }
     }
 

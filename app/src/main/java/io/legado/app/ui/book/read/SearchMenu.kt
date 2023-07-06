@@ -3,6 +3,7 @@ package io.legado.app.ui.book.read
 import android.annotation.SuppressLint
 import android.content.Context
 import android.content.res.ColorStateList
+import android.graphics.PorterDuff
 import android.util.AttributeSet
 import android.view.Gravity
 import android.view.LayoutInflater
@@ -33,10 +34,8 @@ class SearchMenu @JvmOverloads constructor(
     private val callBack: CallBack get() = activity as CallBack
     private val binding = ViewSearchMenuBinding.inflate(LayoutInflater.from(context), this, true)
 
-    private val menuBottomIn: Animation =
-        AnimationUtilsSupport.loadAnimation(context, R.anim.anim_readbook_bottom_in)
-    private val menuBottomOut: Animation =
-        AnimationUtilsSupport.loadAnimation(context, R.anim.anim_readbook_bottom_out)
+    private val menuBottomIn: Animation = loadAnimation(context, R.anim.anim_readbook_bottom_in)
+    private val menuBottomOut: Animation = loadAnimation(context, R.anim.anim_readbook_bottom_out)
     private val bgColor: Int = context.bottomBackground
     private val textColor: Int = context.getPrimaryTextColor(ColorUtils.isColorLight(bgColor))
     private val bottomBackgroundList: ColorStateList =
@@ -72,19 +71,17 @@ class SearchMenu @JvmOverloads constructor(
         tvCurrentSearchInfo.setTextColor(bottomBackgroundList)
         llBottomBg.setBackgroundColor(bgColor)
         fabLeft.backgroundTintList = bottomBackgroundList
-        fabLeft.setColorFilter(textColor)
+        fabLeft.setColorFilter(textColor, PorterDuff.Mode.SRC_IN)
         fabRight.backgroundTintList = bottomBackgroundList
-        fabRight.setColorFilter(textColor)
+        fabRight.setColorFilter(textColor, PorterDuff.Mode.SRC_IN)
         tvMainMenu.setTextColor(textColor)
         tvSearchResults.setTextColor(textColor)
         tvSearchExit.setTextColor(textColor)
-        //tvSetting.setTextColor(textColor)
-        ivMainMenu.setColorFilter(textColor)
-        ivSearchResults.setColorFilter(textColor)
-        ivSearchExit.setColorFilter(textColor)
-        //ivSetting.setColorFilter(textColor)
-        ivSearchContentUp.setColorFilter(textColor)
-        ivSearchContentDown.setColorFilter(textColor)
+        ivMainMenu.setColorFilter(textColor, PorterDuff.Mode.SRC_IN)
+        ivSearchResults.setColorFilter(textColor, PorterDuff.Mode.SRC_IN)
+        ivSearchExit.setColorFilter(textColor, PorterDuff.Mode.SRC_IN)
+        ivSearchContentUp.setColorFilter(textColor, PorterDuff.Mode.SRC_IN)
+        ivSearchContentDown.setColorFilter(textColor, PorterDuff.Mode.SRC_IN)
         tvCurrentSearchInfo.setTextColor(textColor)
     }
 
@@ -148,22 +145,34 @@ class SearchMenu @JvmOverloads constructor(
 
         fabLeft.setOnClickListener {
             updateSearchResultIndex(currentSearchResultIndex - 1)
-            callBack.navigateToSearch(searchResultList[currentSearchResultIndex])
+            callBack.navigateToSearch(
+                searchResultList[currentSearchResultIndex],
+                currentSearchResultIndex
+            )
         }
 
         ivSearchContentUp.setOnClickListener {
             updateSearchResultIndex(currentSearchResultIndex - 1)
-            callBack.navigateToSearch(searchResultList[currentSearchResultIndex])
+            callBack.navigateToSearch(
+                searchResultList[currentSearchResultIndex],
+                currentSearchResultIndex
+            )
         }
 
         ivSearchContentDown.setOnClickListener {
             updateSearchResultIndex(currentSearchResultIndex + 1)
-            callBack.navigateToSearch(searchResultList[currentSearchResultIndex])
+            callBack.navigateToSearch(
+                searchResultList[currentSearchResultIndex],
+                currentSearchResultIndex
+            )
         }
 
         fabRight.setOnClickListener {
             updateSearchResultIndex(currentSearchResultIndex + 1)
-            callBack.navigateToSearch(searchResultList[currentSearchResultIndex])
+            callBack.navigateToSearch(
+                searchResultList[currentSearchResultIndex],
+                currentSearchResultIndex
+            )
         }
     }
 
@@ -225,7 +234,7 @@ class SearchMenu @JvmOverloads constructor(
         fun upSystemUiVisibility()
         fun exitSearchMenu()
         fun showMenuBar()
-        fun navigateToSearch(searchResult: SearchResult)
+        fun navigateToSearch(searchResult: SearchResult, index: Int)
     }
 
 }

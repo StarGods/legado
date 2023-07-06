@@ -15,6 +15,11 @@
         app:showAsAction="ifRoom" />
 
     <item
+        android:id="@+id/menu_upload"
+        android:title="@string/upload_to_remote"
+        app:showAsAction="never" />
+
+    <item
         android:id="@+id/menu_refresh"
         android:title="@string/refresh"
         app:showAsAction="never" />
@@ -58,6 +63,12 @@
     <item
         android:id="@+id/menu_split_long_chapter"
         android:title="@string/split_long_chapter"
+        android:checkable="true"
+        app:showAsAction="never" />
+
+    <item
+        android:id="@+id/menu_delete_alert"
+        android:title="@string/delete_alert"
         android:checkable="true"
         app:showAsAction="never" />
 

@@ -64,11 +64,7 @@ class UmdFile(var book: Book) {
         try {
             umdBook?.let {
                 if (book.coverUrl.isNullOrEmpty()) {
-                    book.coverUrl = FileUtils.getPath(
-                        appCtx.externalFiles,
-                        "covers",
-                        "${MD5Utils.md5Encode16(book.bookUrl)}.jpg"
-                    )
+                    book.coverUrl = LocalBook.getCoverPath(book)
                 }
                 if (!File(book.coverUrl!!).exists()) {
                     FileUtils.writeBytes(book.coverUrl!!, it.cover.coverData)
@@ -112,8 +108,6 @@ class UmdFile(var book: Book) {
             DebugLog.d(javaClass.name, chapter.url)
             chapterList.add(chapter)
         }
-        book.latestChapterTitle = chapterList.lastOrNull()?.title
-        book.totalChapterNum = chapterList.size
         return chapterList
     }
 

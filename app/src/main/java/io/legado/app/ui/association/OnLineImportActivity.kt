@@ -31,6 +31,18 @@ class OnLineImportActivity :
                 "replaceRule" -> showDialogFragment(
                     ImportReplaceRuleDialog(it.second, true)
                 )
+                "httpTts" -> showDialogFragment(
+                    ImportHttpTtsDialog(it.second, true)
+                )
+                "theme" -> showDialogFragment(
+                    ImportThemeDialog(it.second, true)
+                )
+                "txtRule" -> showDialogFragment(
+                    ImportTxtTocRuleDialog(it.second, true)
+                )
+                "dictRule" -> showDialogFragment(
+                    ImportDictRuleDialog(it.second, true)
+                )
             }
         }
         viewModel.errorLive.observe(this) {
@@ -38,7 +50,7 @@ class OnLineImportActivity :
         }
         intent.data?.let {
             val url = it.getQueryParameter("src")
-            if (url.isNullOrBlank()) {
+            if (url.isNullOrEmpty()) {
                 finish()
                 return
             }
@@ -46,24 +58,32 @@ class OnLineImportActivity :
                 "/bookSource" -> showDialogFragment(
                     ImportBookSourceDialog(url, true)
                 )
+
                 "/rssSource" -> showDialogFragment(
                     ImportRssSourceDialog(url, true)
                 )
+
                 "/replaceRule" -> showDialogFragment(
                     ImportReplaceRuleDialog(url, true)
                 )
-                "/textTocRule" -> viewModel.getText(url) { json ->
-                    viewModel.importTextTocRule(json, this::finallyDialog)
-                }
-                "/httpTTS" -> viewModel.getText(url) { json ->
-                    viewModel.importHttpTTS(json, this::finallyDialog)
-                }
-                "/theme" -> viewModel.getText(url) { json ->
-                    viewModel.importTheme(json, this::finallyDialog)
-                }
+                "/textTocRule" -> showDialogFragment(
+                    ImportTxtTocRuleDialog(url, true)
+                )
+                "/httpTTS" -> showDialogFragment(
+                    ImportHttpTtsDialog(url, true)
+                )
+                "/dictRule" -> showDialogFragment(
+                    ImportDictRuleDialog(url, true)
+                )
+                "/theme" -> showDialogFragment(
+                    ImportThemeDialog(url, true)
+                )
                 "/readConfig" -> viewModel.getBytes(url) { bytes ->
                     viewModel.importReadConfig(bytes, this::finallyDialog)
                 }
+                "/addToBookshelf" -> showDialogFragment(
+                    AddToBookshelfDialog(url, true)
+                )
                 "/importonline" -> when (it.host) {
                     "booksource" -> showDialogFragment(
                         ImportBookSourceDialog(url, true)

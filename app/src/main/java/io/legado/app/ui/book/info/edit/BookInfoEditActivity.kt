@@ -11,9 +11,14 @@ import io.legado.app.base.VMBaseActivity
 import io.legado.app.constant.BookType
 import io.legado.app.data.entities.Book
 import io.legado.app.databinding.ActivityBookInfoEditBinding
+import io.legado.app.help.book.BookHelp
+import io.legado.app.help.book.isAudio
+import io.legado.app.help.book.isImage
+import io.legado.app.help.book.isLocal
 import io.legado.app.ui.book.changecover.ChangeCoverDialog
 import io.legado.app.utils.*
 import io.legado.app.utils.viewbindingdelegate.viewBinding
+import splitties.init.appCtx
 import java.io.FileOutputStream
 
 class BookInfoEditActivity :
@@ -72,9 +77,9 @@ class BookInfoEditActivity :
         tieBookName.setText(book.name)
         tieBookAuthor.setText(book.author)
         spType.setSelection(
-            when (book.type) {
-                BookType.image -> 2
-                BookType.audio -> 1
+            when {
+                book.isImage -> 2
+                book.isAudio -> 1
                 else -> 0
             }
         )
@@ -90,21 +95,23 @@ class BookInfoEditActivity :
     }
 
     private fun saveData() = binding.run {
-        viewModel.book?.let { book ->
-            book.name = tieBookName.text?.toString() ?: ""
-            book.author = tieBookAuthor.text?.toString() ?: ""
-            book.type = when (spType.selectedItemPosition) {
-                2 -> BookType.image
-                1 -> BookType.audio
-                else -> BookType.default
-            }
-            val customCoverUrl = tieCoverUrl.text?.toString()
-            book.customCoverUrl = if (customCoverUrl == book.coverUrl) null else customCoverUrl
-            book.customIntro = tieBookIntro.text?.toString()
-            viewModel.saveBook(book) {
-                setResult(Activity.RESULT_OK)
-                finish()
-            }
+        val book = viewModel.book ?: return@run
+        val oldBook = book.copy()
+        book.name = tieBookName.text?.toString() ?: ""
+        book.author = tieBookAuthor.text?.toString() ?: ""
+        val local = if (book.isLocal) BookType.local else 0
+        book.type = when (spType.selectedItemPosition) {
+            2 -> BookType.image or local
+            1 -> BookType.audio or local
+            else -> BookType.text or local
+        }
+        val customCoverUrl = tieCoverUrl.text?.toString()
+        book.customCoverUrl = if (customCoverUrl == book.coverUrl) null else customCoverUrl
+        book.customIntro = tieBookIntro.text?.toString()
+        BookHelp.updateCacheFolder(oldBook, book)
+        viewModel.saveBook(book) {
+            setResult(Activity.RESULT_OK)
+            finish()
         }
     }
 
@@ -116,13 +123,21 @@ class BookInfoEditActivity :
 
     private fun coverChangeTo(uri: Uri) {
         readUri(uri) { fileDoc, inputStream ->
-            inputStream.use {
-                var file = this.externalFiles
-                file = FileUtils.createFileIfNotExist(file, "covers", fileDoc.name)
-                FileOutputStream(file).use { outputStream ->
-                    inputStream.copyTo(outputStream)
+            runCatching {
+                inputStream.use {
+                    var file = this.externalFiles
+                    val suffix = fileDoc.name.substringAfterLast(".")
+                    val fileName = uri.inputStream(this).getOrThrow().use {
+                        MD5Utils.md5Encode(it) + ".$suffix"
+                    }
+                    file = FileUtils.createFileIfNotExist(file, "covers", fileName)
+                    FileOutputStream(file).use { outputStream ->
+                        inputStream.copyTo(outputStream)
+                    }
+                    coverChangeTo(file.absolutePath)
                 }
-                coverChangeTo(file.absolutePath)
+            }.onFailure {
+                appCtx.toastOnUi(it.localizedMessage)
             }
         }
     }

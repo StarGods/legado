@@ -34,7 +34,7 @@ class TextPageFactory(dataSource: DataSource) : PageFactory<TextPage>(dataSource
     }
 
     override fun moveToNext(upContent: Boolean): Boolean = with(dataSource) {
-        return if (hasNext()) {
+        return if (hasNext() && currentChapter != null) {
             if (currentChapter?.isLastIndex(pageIndex) == true) {
                 ReadBook.moveToNextChapter(upContent)
             } else {
@@ -47,7 +47,7 @@ class TextPageFactory(dataSource: DataSource) : PageFactory<TextPage>(dataSource
     }
 
     override fun moveToPrev(upContent: Boolean): Boolean = with(dataSource) {
-        return if (hasPrev()) {
+        return if (hasPrev() && currentChapter != null) {
             if (pageIndex <= 0) {
                 ReadBook.moveToPrevChapter(upContent)
             } else {
@@ -122,7 +122,7 @@ class TextPageFactory(dataSource: DataSource) : PageFactory<TextPage>(dataSource
                             ?: TextPage(title = nc.title).format()
                     }
                     return@with nc.getPage(1)?.removePageAloudSpan()
-                        ?: TextPage(title = nc.title).format()
+                        ?: TextPage(text = "继续滑动以加载下一章…").format()
                 }
 
             }

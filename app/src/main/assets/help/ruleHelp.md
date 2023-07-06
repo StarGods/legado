@@ -10,9 +10,31 @@
 @Json: json规则,直接写时以$.开头可省略@Json
 : regex规则,不可省略,只可以用在书籍列表和目录列表
 ```
+* jsLib
+> 注入JavaScript到RhinoJs引擎中，支持两种格式，可实现[函数共用](https://github.com/gedoor/legado/wiki/JavaScript%E5%87%BD%E6%95%B0%E5%85%B1%E7%94%A8)
+
+> `JavaScript Code` 直接填写JavaScript片段  
+> `{"example":"https://www.example.com/js/example.js", ...}` 自动复用已经下载的js文件
+
+* 并发率
+> 并发限制，单位ms，可填写两种格式
+
+> `1000` 访问间隔1s  
+> `20/60000` 60s内访问次数20  
+
+* 书源类型: 文件
+> 对于类似知轩藏书提供文件整合下载的网站，可以在书源详情的下载URL规则获取文件链接
+
+> 通过截取下载链接或文件响应头头获取文件信息，获取失败会自动拼接`书名` `作者`和下载链接的`UrlOption`的`type`字段
+
+> 压缩文件解压缓存会在下次启动后自动清理，不会占用额外空间  
+
+* CookieJar
+> 启用后会自动保存每次返回头中的Set-Cookie中的值，适用于验证码图片一类需要session的网站
 
 * 登录UI
-> 不使用内置webView登录网站，需要使用`登录URL`规则实现登录逻辑，可使用`登录检查JS`检查登录结果
+> 不使用内置webView登录网站，需要使用`登录URL`规则实现登录逻辑，可使用`登录检查JS`检查登录结果  
+> 版本20221113重要更改：按钮支持调用`登录URL`规则里面的函数，必须实现`login`函数
 ```
 规则填写示范
 [
@@ -28,16 +50,31 @@
         name: "注册",
         type: "button",
         action: "http://www.yooike.com/xiaoshuo/#/register?title=%E6%B3%A8%E5%86%8C"
+    },
+    {
+        name: "获取验证码",
+        type: "button",
+        action: "getVerificationCode()"
     }
 ]
-成功登录后在js中获取读取登录信息
+```
+* 登录URL
+> 可填写登录链接或者实现登录UI的登录逻辑的JavaScript
+```
+示范填写
+function login() {
+    java.log("模拟登录请求");
+    java.log(source.getLoginInfoMap());
+}
+function getVerificationCode() {
+    java.log("登录UI按钮：获取到手机号码"+result.get("telephone"))
+}
+
+登录按钮函数获取登录信息
+result.get("telephone")
+login函数获取登录信息
 source.getLoginInfo()
 source.getLoginInfoMap().get("telephone")
-登录信息示范
-{
-    "telephone":"123456",
-    "password":"123456"
-}
 source登录相关方法,可在js内通过source.调用,可以参考阿里云语音登录
 login()
 getHeaderMap(hasLoginHeader: Boolean = false)
@@ -148,5 +185,11 @@ let options = {
 ```
 
 * 购买操作
-> 返回购买链接，可直接填写链接或者JavaScript  
-> 可用变量 book chapter
+> 可直接填写链接或者JavaScript，如果执行结果是网络链接将会自动打开浏览器,js返回true自动刷新目录和当前章节
+
+* 图片解密
+> 适用于图片需要二次解密的情况，直接填写JavaScript，返回解密后的`ByteArray`  
+> 部分变量说明：java（仅支持[js扩展类](https://github.com/gedoor/legado/blob/master/app/src/main/java/io/legado/app/help/JsExtensions.kt)），result为待解密图片的`ByteArray`，src为图片链接
+
+* 封面解密
+> 同图片解密 其中result为待解密封面的`inputStream`

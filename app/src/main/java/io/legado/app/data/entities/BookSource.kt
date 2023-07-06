@@ -4,15 +4,14 @@ import android.os.Parcelable
 import android.text.TextUtils
 import androidx.room.*
 import io.legado.app.constant.AppPattern
-import io.legado.app.constant.BookType
+import io.legado.app.constant.BookSourceType
 import io.legado.app.data.entities.rule.*
-import io.legado.app.help.SourceAnalyzer
-import io.legado.app.utils.*
-import kotlinx.parcelize.IgnoredOnParcel
+import io.legado.app.utils.GSON
+import io.legado.app.utils.fromJsonObject
+import io.legado.app.utils.splitNotBlank
 import kotlinx.parcelize.Parcelize
-import splitties.init.appCtx
-import java.io.InputStream
 
+@Suppress("unused")
 @Parcelize
 @TypeConverters(BookSource.Converters::class)
 @Entity(
@@ -27,17 +26,25 @@ data class BookSource(
     var bookSourceName: String = "",
     // 分组
     var bookSourceGroup: String? = null,
-    // 类型，0 文本，1 音频, 2 图片
-    @BookType.Type
+    // 类型，0 文本，1 音频, 2 图片, 3 文件（指的是类似知轩藏书只提供下载的网站）
+    @BookSourceType.Type
     var bookSourceType: Int = 0,
     // 详情页url正则
     var bookUrlPattern: String? = null,
     // 手动排序编号
+    @ColumnInfo(defaultValue = "0")
     var customOrder: Int = 0,
     // 是否启用
+    @ColumnInfo(defaultValue = "1")
     var enabled: Boolean = true,
     // 启用发现
+    @ColumnInfo(defaultValue = "1")
     var enabledExplore: Boolean = true,
+    // js库
+    override var jsLib: String? = null,
+    // 启用okhttp CookieJAr 自动保存每次请求的cookie
+    @ColumnInfo(defaultValue = "0")
+    override var enabledCookieJar: Boolean? = true,
     // 并发率
     override var concurrentRate: String? = null,
     // 请求头
@@ -48,8 +55,12 @@ data class BookSource(
     override var loginUi: String? = null,
     // 登录检测js
     var loginCheckJs: String? = null,
+    // 封面解密js
+    var coverDecodeJs: String? = null,
     // 注释
     var bookSourceComment: String? = null,
+    // 自定义变量说明
+    var variableComment: String? = null,
     // 最后更新时间，用于排序
     var lastUpdateTime: Long = 0,
     // 响应时间，用于排序
@@ -58,6 +69,8 @@ data class BookSource(
     var weight: Int = 0,
     // 发现url
     var exploreUrl: String? = null,
+    // 发现筛选规则
+    var exploreScreen: String? = null,
     // 发现规则
     var ruleExplore: ExploreRule? = null,
     // 搜索url
@@ -69,7 +82,9 @@ data class BookSource(
     // 目录页规则
     var ruleToc: TocRule? = null,
     // 正文页规则
-    var ruleContent: ContentRule? = null
+    var ruleContent: ContentRule? = null,
+    // 段评规则
+    var ruleReview: ReviewRule? = null
 ) : Parcelable, BaseSource {
 
     override fun getTag(): String {
@@ -80,64 +95,55 @@ data class BookSource(
         return bookSourceUrl
     }
 
-    @delegate:Transient
-    @delegate:Ignore
-    @IgnoredOnParcel
-    val exploreKinds: List<ExploreKind> by lazy {
-        val exploreUrl = exploreUrl ?: return@lazy emptyList()
-        val kinds = arrayListOf<ExploreKind>()
-        var ruleStr = exploreUrl
-        if (ruleStr.isNotBlank()) {
-            kotlin.runCatching {
-                if (exploreUrl.startsWith("<js>", false)
-                    || exploreUrl.startsWith("@js:", false)
-                ) {
-                    val aCache = ACache.get(appCtx, "explore")
-                    ruleStr = aCache.getAsString(bookSourceUrl) ?: ""
-                    if (ruleStr.isBlank()) {
-                        val jsStr = if (exploreUrl.startsWith("@")) {
-                            exploreUrl.substring(4)
-                        } else {
-                            exploreUrl.substring(4, exploreUrl.lastIndexOf("<"))
-                        }
-                        ruleStr = evalJS(jsStr).toString().trim()
-                        aCache.put(bookSourceUrl, ruleStr)
-                    }
-                }
-                if (ruleStr.isJsonArray()) {
-                    GSON.fromJsonArray<ExploreKind>(ruleStr).getOrThrow()?.let {
-                        kinds.addAll(it)
-                    }
-                } else {
-                    ruleStr.split("(&&|\n)+".toRegex()).forEach { kindStr ->
-                        val kindCfg = kindStr.split("::")
-                        kinds.add(ExploreKind(kindCfg.first(), kindCfg.getOrNull(1)))
-                    }
-                }
-            }.onFailure {
-                kinds.add(ExploreKind("ERROR:${it.localizedMessage}", it.stackTraceToString()))
-                it.printOnDebug()
-            }
-        }
-        return@lazy kinds
-    }
-
     override fun hashCode(): Int {
         return bookSourceUrl.hashCode()
     }
 
-    override fun equals(other: Any?) =
-        if (other is BookSource) other.bookSourceUrl == bookSourceUrl else false
+    override fun equals(other: Any?): Boolean {
+        return if (other is BookSource) other.bookSourceUrl == bookSourceUrl else false
+    }
 
-    fun getSearchRule() = ruleSearch ?: SearchRule()
+    fun getSearchRule(): SearchRule {
+        ruleSearch?.let { return it }
+        val rule = SearchRule()
+        ruleSearch = rule
+        return rule
+    }
 
-    fun getExploreRule() = ruleExplore ?: ExploreRule()
+    fun getExploreRule(): ExploreRule {
+        ruleExplore?.let { return it }
+        val rule = ExploreRule()
+        ruleExplore = rule
+        return rule
+    }
 
-    fun getBookInfoRule() = ruleBookInfo ?: BookInfoRule()
+    fun getBookInfoRule(): BookInfoRule {
+        ruleBookInfo?.let { return it }
+        val rule = BookInfoRule()
+        ruleBookInfo = rule
+        return rule
+    }
 
-    fun getTocRule() = ruleToc ?: TocRule()
+    fun getTocRule(): TocRule {
+        ruleToc?.let { return it }
+        val rule = TocRule()
+        ruleToc = rule
+        return rule
+    }
 
-    fun getContentRule() = ruleContent ?: ContentRule()
+    fun getContentRule(): ContentRule {
+        ruleContent?.let { return it }
+        val rule = ContentRule()
+        ruleContent = rule
+        return rule
+    }
+
+    fun getReviewRule(): ReviewRule {
+        ruleReview?.let { return it }
+        val rule = ReviewRule()
+        ruleReview = rule
+        return rule
+    }
 
     fun getDisPlayNameGroup(): String {
         return if (bookSourceGroup.isNullOrBlank()) {
@@ -158,7 +164,7 @@ data class BookSource(
 
     fun removeGroup(groups: String): BookSource {
         bookSourceGroup?.splitNotBlank(AppPattern.splitGroupRegex)?.toHashSet()?.let {
-            it.removeAll(groups.splitNotBlank(AppPattern.splitGroupRegex))
+            it.removeAll(groups.splitNotBlank(AppPattern.splitGroupRegex).toSet())
             bookSourceGroup = TextUtils.join(",", it)
         }
         return this
@@ -177,21 +183,35 @@ data class BookSource(
 
     fun getInvalidGroupNames(): String {
         return bookSourceGroup?.splitNotBlank(AppPattern.splitGroupRegex)?.toHashSet()?.filter {
-            "失效" in it
+            "失效" in it || it == "校验超时"
         }?.joinToString() ?: ""
     }
 
-    fun equal(source: BookSource) =
-        equal(bookSourceName, source.bookSourceName)
+    fun getDisplayVariableComment(otherComment: String): String {
+        return if (variableComment.isNullOrBlank()) {
+            otherComment
+        } else {
+            "${variableComment}\n$otherComment"
+        }
+    }
+
+    fun equal(source: BookSource): Boolean {
+        return equal(bookSourceName, source.bookSourceName)
                 && equal(bookSourceUrl, source.bookSourceUrl)
                 && equal(bookSourceGroup, source.bookSourceGroup)
                 && bookSourceType == source.bookSourceType
                 && equal(bookUrlPattern, source.bookUrlPattern)
                 && equal(bookSourceComment, source.bookSourceComment)
+                && customOrder == source.customOrder
                 && enabled == source.enabled
                 && enabledExplore == source.enabledExplore
+                && enabledCookieJar == source.enabledCookieJar
+                && equal(concurrentRate, source.concurrentRate)
                 && equal(header, source.header)
-                && loginUrl == source.loginUrl
+                && equal(loginUrl, source.loginUrl)
+                && equal(loginUi, source.loginUi)
+                && equal(loginCheckJs, source.loginCheckJs)
+                && equal(coverDecodeJs, source.coverDecodeJs)
                 && equal(exploreUrl, source.exploreUrl)
                 && equal(searchUrl, source.searchUrl)
                 && getSearchRule() == source.getSearchRule()
@@ -199,23 +219,9 @@ data class BookSource(
                 && getBookInfoRule() == source.getBookInfoRule()
                 && getTocRule() == source.getTocRule()
                 && getContentRule() == source.getContentRule()
+    }
 
     private fun equal(a: String?, b: String?) = a == b || (a.isNullOrEmpty() && b.isNullOrEmpty())
-
-    companion object {
-
-        fun fromJson(json: String): Result<BookSource> {
-            return SourceAnalyzer.jsonToBookSource(json)
-        }
-
-        fun fromJsonArray(json: String): Result<MutableList<BookSource>> {
-            return SourceAnalyzer.jsonToBookSources(json)
-        }
-
-        fun fromJsonArray(inputStream: InputStream): Result<MutableList<BookSource>> {
-            return SourceAnalyzer.jsonToBookSources(inputStream)
-        }
-    }
 
     class Converters {
 
@@ -258,6 +264,14 @@ data class BookSource(
         @TypeConverter
         fun stringToContentRule(json: String?) =
             GSON.fromJsonObject<ContentRule>(json).getOrNull()
+
+        @TypeConverter
+        fun stringToReviewRule(json: String?) =
+            GSON.fromJsonObject<ReviewRule>(json).getOrNull()
+
+        @TypeConverter
+        fun reviewRuleToString(reviewRule: ReviewRule?): String =
+            GSON.toJson(reviewRule)
 
     }
 }

@@ -31,14 +31,34 @@
         android:checkable="true"
         app:showAsAction="never" />
 
+    <!--自定义导出章节 选择菜单-->
+    <item
+        android:id="@+id/menu_enable_custom_export"
+        android:title="@string/custom_export_section"
+        android:checkable="true"
+        app:showAsAction="never" />
+
     <item
         android:id="@+id/menu_export_web_dav"
         android:title="@string/export_to_web_dav"
         android:checkable="true"
         app:showAsAction="never" />
+
     <item
         android:id="@+id/menu_export_no_chapter_name"
         android:title="@string/export_no_chapter_name"
+        android:checkable="true"
+        app:showAsAction="never" />
+
+    <item
+        android:id="@+id/menu_export_pics_file"
+        android:title="@string/export_pics_file"
+        android:checkable="true"
+        app:showAsAction="never" />
+
+    <item
+        android:id="@+id/menu_parallel_export"
+        android:title="@string/parallel_export_book"
         android:checkable="true"
         app:showAsAction="never" />
 

@@ -1,19 +1,21 @@
 package io.legado.app.model.webBook
 
+import android.text.TextUtils
 import io.legado.app.R
 import io.legado.app.data.entities.Book
 import io.legado.app.data.entities.BookSource
 import io.legado.app.exception.NoStackTraceException
-import io.legado.app.help.BookHelp
+import io.legado.app.help.book.BookHelp
+import io.legado.app.help.book.isWebFile
 import io.legado.app.model.Debug
 import io.legado.app.model.analyzeRule.AnalyzeRule
 import io.legado.app.utils.DebugLog
 import io.legado.app.utils.HtmlFormatter
 import io.legado.app.utils.NetworkUtils
 import io.legado.app.utils.StringUtils.wordCountFormat
-import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.ensureActive
 import splitties.init.appCtx
+import kotlin.coroutines.coroutineContext
 
 
 /**
@@ -22,8 +24,7 @@ import splitties.init.appCtx
 object BookInfo {
 
     @Throws(Exception::class)
-    fun analyzeBookInfo(
-        scope: CoroutineScope,
+    suspend fun analyzeBookInfo(
         bookSource: BookSource,
         book: Book,
         baseUrl: String,
@@ -39,11 +40,10 @@ object BookInfo {
         val analyzeRule = AnalyzeRule(book, bookSource)
         analyzeRule.setContent(body).setBaseUrl(baseUrl)
         analyzeRule.setRedirectUrl(redirectUrl)
-        analyzeBookInfo(scope, book, body, analyzeRule, bookSource, baseUrl, redirectUrl, canReName)
+        analyzeBookInfo(book, body, analyzeRule, bookSource, baseUrl, redirectUrl, canReName)
     }
 
-    fun analyzeBookInfo(
-        scope: CoroutineScope,
+    suspend fun analyzeBookInfo(
         book: Book,
         body: String,
         analyzeRule: AnalyzeRule,
@@ -55,13 +55,13 @@ object BookInfo {
         val infoRule = bookSource.getBookInfoRule()
         infoRule.init?.let {
             if (it.isNotBlank()) {
-                scope.ensureActive()
+                coroutineContext.ensureActive()
                 Debug.log(bookSource.bookSourceUrl, "≡执行详情页初始化规则")
                 analyzeRule.setContent(analyzeRule.getElement(it))
             }
         }
         val mCanReName = canReName && !infoRule.canReName.isNullOrBlank()
-        scope.ensureActive()
+        coroutineContext.ensureActive()
         Debug.log(bookSource.bookSourceUrl, "┌获取书名")
         BookHelp.formatBookName(analyzeRule.getString(infoRule.name)).let {
             if (it.isNotEmpty() && (mCanReName || book.name.isEmpty())) {
@@ -69,7 +69,7 @@ object BookInfo {
             }
             Debug.log(bookSource.bookSourceUrl, "└${it}")
         }
-        scope.ensureActive()
+        coroutineContext.ensureActive()
         Debug.log(bookSource.bookSourceUrl, "┌获取作者")
         BookHelp.formatBookAuthor(analyzeRule.getString(infoRule.author)).let {
             if (it.isNotEmpty() && (mCanReName || book.author.isEmpty())) {
@@ -77,7 +77,7 @@ object BookInfo {
             }
             Debug.log(bookSource.bookSourceUrl, "└${it}")
         }
-        scope.ensureActive()
+        coroutineContext.ensureActive()
         Debug.log(bookSource.bookSourceUrl, "┌获取分类")
         try {
             analyzeRule.getStringList(infoRule.kind)
@@ -90,7 +90,7 @@ object BookInfo {
             Debug.log(bookSource.bookSourceUrl, "└${e.localizedMessage}")
             DebugLog.e("获取分类出错", e)
         }
-        scope.ensureActive()
+        coroutineContext.ensureActive()
         Debug.log(bookSource.bookSourceUrl, "┌获取字数")
         try {
             wordCountFormat(analyzeRule.getString(infoRule.wordCount)).let {
@@ -101,7 +101,7 @@ object BookInfo {
             Debug.log(bookSource.bookSourceUrl, "└${e.localizedMessage}")
             DebugLog.e("获取字数出错", e)
         }
-        scope.ensureActive()
+        coroutineContext.ensureActive()
         Debug.log(bookSource.bookSourceUrl, "┌获取最新章节")
         try {
             analyzeRule.getString(infoRule.lastChapter).let {
@@ -112,7 +112,7 @@ object BookInfo {
             Debug.log(bookSource.bookSourceUrl, "└${e.localizedMessage}")
             DebugLog.e("获取最新章节出错", e)
         }
-        scope.ensureActive()
+        coroutineContext.ensureActive()
         Debug.log(bookSource.bookSourceUrl, "┌获取简介")
         try {
             HtmlFormatter.format(analyzeRule.getString(infoRule.intro)).let {
@@ -123,7 +123,7 @@ object BookInfo {
             Debug.log(bookSource.bookSourceUrl, "└${e.localizedMessage}")
             DebugLog.e("获取简介出错", e)
         }
-        scope.ensureActive()
+        coroutineContext.ensureActive()
         Debug.log(bookSource.bookSourceUrl, "┌获取封面链接")
         try {
             analyzeRule.getString(infoRule.coverUrl).let {
@@ -137,14 +137,29 @@ object BookInfo {
             Debug.log(bookSource.bookSourceUrl, "└${e.localizedMessage}")
             DebugLog.e("获取封面出错", e)
         }
-        scope.ensureActive()
-        Debug.log(bookSource.bookSourceUrl, "┌获取目录链接")
-        book.tocUrl = analyzeRule.getString(infoRule.tocUrl, isUrl = true)
-        if (book.tocUrl.isEmpty()) book.tocUrl = baseUrl
-        if (book.tocUrl == baseUrl) {
-            book.tocHtml = body
+        if (!book.isWebFile) {
+            coroutineContext.ensureActive()
+            Debug.log(bookSource.bookSourceUrl, "┌获取目录链接")
+            book.tocUrl = analyzeRule.getString(infoRule.tocUrl, isUrl = true)
+            if (book.tocUrl.isEmpty()) book.tocUrl = baseUrl
+            if (book.tocUrl == baseUrl) {
+                book.tocHtml = body
+            }
+            Debug.log(bookSource.bookSourceUrl, "└${book.tocUrl}")
+        } else {
+            coroutineContext.ensureActive()
+            Debug.log(bookSource.bookSourceUrl, "┌获取文件下载链接")
+            book.downloadUrls = analyzeRule.getStringList(infoRule.downloadUrls, isUrl = true)
+            if (book.downloadUrls.isNullOrEmpty()) {
+                Debug.log(bookSource.bookSourceUrl, "└")
+                throw NoStackTraceException("下载链接为空")
+            } else {
+                Debug.log(
+                    bookSource.bookSourceUrl,
+                    "└" + TextUtils.join("，\n", book.downloadUrls!!)
+                )
+            }
         }
-        Debug.log(bookSource.bookSourceUrl, "└${book.tocUrl}")
     }
 
 }

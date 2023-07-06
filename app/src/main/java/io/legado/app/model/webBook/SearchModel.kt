@@ -5,8 +5,10 @@ import io.legado.app.constant.PreferKey
 import io.legado.app.data.appDb
 import io.legado.app.data.entities.BookSource
 import io.legado.app.data.entities.SearchBook
+import io.legado.app.exception.NoStackTraceException
 import io.legado.app.help.config.AppConfig
 import io.legado.app.help.coroutine.CompositeCoroutine
+import io.legado.app.ui.book.search.SearchScope
 import io.legado.app.utils.getPrefBoolean
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.ExecutorCoroutineDispatcher
@@ -16,7 +18,7 @@ import splitties.init.appCtx
 import java.util.concurrent.Executors
 import kotlin.math.min
 
-class SearchModel(private val scope: CoroutineScope) {
+class SearchModel(private val scope: CoroutineScope, private val callBack: CallBack) {
     val threadCount = AppConfig.threadCount
     private var searchPool: ExecutorCoroutineDispatcher? = null
     private var mSearchId = 0L
@@ -25,18 +27,9 @@ class SearchModel(private val scope: CoroutineScope) {
     private var tasks = CompositeCoroutine()
     private var bookSourceList = arrayListOf<BookSource>()
     private var searchBooks = arrayListOf<SearchBook>()
-    private var callBack: CallBack? = null
 
     @Volatile
     private var searchIndex = -1
-
-    fun registerCallback(callBack: CallBack) {
-        this.callBack = callBack
-    }
-
-    fun unRegisterCallback() {
-        this.callBack = null
-    }
 
     private fun initSearchPool() {
         searchPool?.close()
@@ -45,10 +38,10 @@ class SearchModel(private val scope: CoroutineScope) {
     }
 
     fun search(searchId: Long, key: String) {
-        callBack?.onSearchStart()
+        callBack.onSearchStart()
         if (searchId != mSearchId) {
             if (key.isEmpty()) {
-                callBack?.onSearchCancel()
+                callBack.onSearchCancel()
                 return
             } else {
                 this.searchKey = key
@@ -59,20 +52,13 @@ class SearchModel(private val scope: CoroutineScope) {
             initSearchPool()
             mSearchId = searchId
             searchPage = 1
-            val searchGroup = AppConfig.searchGroup
             bookSourceList.clear()
             searchBooks.clear()
-            callBack?.onSearchSuccess(searchBooks)
-            if (searchGroup.isBlank()) {
-                bookSourceList.addAll(appDb.bookSourceDao.allEnabled)
-            } else {
-                val sources = appDb.bookSourceDao.getEnabledByGroup(searchGroup)
-                if (sources.isEmpty()) {
-                    AppConfig.searchGroup = ""
-                    bookSourceList.addAll(appDb.bookSourceDao.allEnabled)
-                } else {
-                    bookSourceList.addAll(sources)
-                }
+            callBack.onSearchSuccess(searchBooks)
+            bookSourceList.addAll(callBack.getSearchScope().getBookSources())
+            if (bookSourceList.isEmpty()) {
+                callBack.onSearchCancel(NoStackTraceException("启用书源为空"))
+                return
             }
         } else {
             searchPage++
@@ -114,7 +100,7 @@ class SearchModel(private val scope: CoroutineScope) {
             appDb.searchBookDao.insert(*items.toTypedArray())
             val precision = appCtx.getPrefBoolean(PreferKey.precisionSearch)
             mergeItems(scope, items, precision)
-            callBack?.onSearchSuccess(searchBooks)
+            callBack.onSearchSuccess(searchBooks)
         }
     }
 
@@ -128,7 +114,7 @@ class SearchModel(private val scope: CoroutineScope) {
         if (searchIndex >= bookSourceList.lastIndex
             + min(bookSourceList.size, threadCount)
         ) {
-            callBack?.onSearchFinish(searchBooks.isEmpty())
+            callBack.onSearchFinish(searchBooks.isEmpty())
         }
     }
 
@@ -201,7 +187,7 @@ class SearchModel(private val scope: CoroutineScope) {
 
     fun cancelSearch() {
         close()
-        callBack?.onSearchCancel()
+        callBack.onSearchCancel()
     }
 
     fun close() {
@@ -212,10 +198,11 @@ class SearchModel(private val scope: CoroutineScope) {
     }
 
     interface CallBack {
+        fun getSearchScope(): SearchScope
         fun onSearchStart()
         fun onSearchSuccess(searchBooks: ArrayList<SearchBook>)
         fun onSearchFinish(isEmpty: Boolean)
-        fun onSearchCancel()
+        fun onSearchCancel(exception: Exception? = null)
     }
 
 }

@@ -33,28 +33,50 @@ java.getString(ruleStr: String?, mContent: Any? = null, isUrl: Boolean = false)
 java.getStringList(ruleStr: String?, mContent: Any? = null, isUrl: Boolean = false)
 ```
 * 设置解析内容
+
 ```
 java.setContent(content: Any?, baseUrl: String? = null):
 ```
+
 * 获取Element/Element列表
+
 > 如果要改变解析源代码，请先使用`java.setContent`
+
 ```
 java.getElement(ruleStr: String)
 java.getElements(ruleStr: String)
 ```
 
-### [js扩展类](https://github.com/gedoor/legado/blob/master/app/src/main/java/io/legado/app/help/JsExtensions.kt) 部分函数
+* 重新搜索书籍/重新获取目录url
+
+> 可以在刷新目录之前使用,有些书源书籍地址和目录url会变
+
+```
+java.reGetBook()
+java.refreshTocUrl()
+```
 * 变量存取
+
 ```
 java.get(key)
 java.put(key, value)
 ```
+
+### [js扩展类](https://github.com/gedoor/legado/blob/master/app/src/main/java/io/legado/app/help/JsExtensions.kt) 部分函数
+
 * 网络请求
+
 ```
 java.ajax(urlStr): String
 java.ajaxAll(urlList: Array<String>): Array<StrResponse?>
 //返回Response 方法body() code() message() header() raw() toString() 
-java.connect(urlStr): Response<String>
+java.connect(urlStr): StrResponse
+
+java.post(url: String, body: String, headerMap: Map<String, String>): Connection.Response
+
+java.get(url: String, headerMap: Map<String, String>): Connection.Response
+
+java.head(url: String, headerMap: Map<String, String>): Connection.Response
 
 * 使用webView访问网络
 * @param html 直接用webView载入的html, 如果html为空直接访问url
@@ -67,23 +89,30 @@ java.webView(html: String?, url: String?, js: String?): String
 * @param url 要打开的链接
 * @param title 浏览器的标题
 java.startBrowser(url: String, title: String)
+
+* 使用内置浏览器打开链接，并等待网页结果 .body()获取网页内容
+java.startBrowserAwait(url: String, title: String): StrResponse
 ```
 * 调试
 ```
 java.log(msg)
 java.logType(var)
 ```
+* 获取用户输入的验证码
+```
+java.getVerificationCode(imageUrl)
+```
 * 弹窗提示
 ```
 java.longToast(msg: Any?)
 java.toast(msg: Any?)
 ```
-* 从网络(由java.cacheFile实现)、本地导入JavaScript脚本
+* 从网络(由java.cacheFile实现)、本地读取JavaScript文件，导入上下文请手动`eval(String(...))`
 ```
-{{java.importScript(url)}}
+java.importScript(url)
 //相对路径支持android/data/{package}/cache
-{{java.importScript(relativePath)}}
-{{java.importScript(absolutePath)}}
+java.importScript(relativePath)
+java.importScript(absolutePath)
 ```
 * 缓存网络文件
 ```
@@ -95,23 +124,63 @@ eval(String(java.cacheFile(url)))
 删除缓存文件
 cache.delete(java.md5Encode16(url))
 ```
-* 获取网络zip文件里面的数据
+* 获取网络压缩文件里面指定路径的数据 *可替换Zip Rar 7Z
 ```
-java.getZipStringContent(url: String, path: String)
+java.get*StringContent(url: String, path: String): String
+
+java.get*StringContent(url: String, path: String, charsetName: String): String
+
+java.get*ByteArrayContent(url: String, path: String): ByteArray?
+
 ```
 * base64
 > flags参数可省略，默认Base64.NO_WRAP，查看[flags参数说明](https://blog.csdn.net/zcmain/article/details/97051870)
 ```
-java.base64Decode(str: String, flags: Int)
+java.base64Decode(str: String)
+java.base64Decode(str: String, charset: String)
+java.base64DecodeToByteArray(str: String, flags: Int)
 java.base64Encode(str: String, flags: Int)
+```
+* ByteArray
+```
+Str转Bytes
+java.strToBytes(str: String)
+java.strToBytes(str: String, charset: String)
+Bytes转Str
+java.bytesToStr(bytes: ByteArray)
+java.bytesToStr(bytes: ByteArray, charset: String)
+```
+* Hex
+```
+HexString 解码为字节数组
+java.hexDecodeToByteArray(hex: String)
+hexString 解码为utf8String
+java.hexDecodeToString(hex: String)
+utf8 编码为hexString
+java.hexEncodeToString(utf8: String)
+```
+* 标识id
+```
+java.randomUUID()
+java.androidId()
+```
+* 繁简转换
+```
+将文本转换为简体
+java.t2s(text: String): String
+将文本转换为繁体
+java.s2t(text: String): String
 ```
 * 文件
 >  所有对于文件的读写删操作都是相对路径,只能操作阅读缓存/android/data/{package}/cache/内的文件
 ```
-//文件下载,content为十六进制字符串,url用于生成文件名，返回文件路径
-downloadFile(content: String, url: String): String
+//文件下载 url用于生成文件名，返回文件路径
+downloadFile(url: String): String
 //文件解压,zipPath为压缩文件路径，返回解压路径
+unArchiveFile(zipPath: String): String
 unzipFile(zipPath: String): String
+unrarFile(zipPath: String): String
+un7zFile(zipPath: String): String
 //文件夹内所有文件读取
 getTxtInFolder(unzipPath: String): String
 //读取文本文件
@@ -119,49 +188,89 @@ readTxtFile(path: String): String
 //删除文件
 deleteFile(path: String) 
 ```
-****
-> [常见加密解密算法介绍](https://www.yijiyong.com/algorithm/encryption/01-intro.html)
-> [相关概念](https://blog.csdn.net/OrangeJack/article/details/82913804)  
-* AES
+
+### [js加解密类](https://github.com/gedoor/legado/blob/master/app/src/main/java/io/legado/app/help/JsEncodeUtils.kt) 部分函数
+
+> 提供在JavaScript环境中快捷调用crypto算法的函数，由[hutool-crypto](https://www.hutool.cn/docs/#/crypto/概述)实现  
+
+> 其他没有添加的算法可在JavaScript中使用`JavaImporter`[调用](https://m.jb51.net/article/92138.htm)Java，例子可参考`朗读引擎-阿里云语音`  
+
+> 注意：如果输入的参数不是Utf8String 可先调用`java.hexDecodeToByteArray java.base64DecodeToByteArray`转成ByteArray
+* 对称加密
+> 输入参数key iv 支持ByteArray|**Utf8String**
 ```
-* @param data 传入的原始数据
-* @param key AES加密的key
-* @param transformation AES加密的方式 例如AES/ECB/PKCS5Padding
-* @param iv ECB模式的偏移向量
-java.aesDecodeToString(str: String, key: String, transformation: String, iv: String)
-
-java.aesBase64DecodeToString(str: String, key: String, transformation: String, iv: String)
-
-java.aesEncodeToString(str: String, key: String, transformation: String, iv: String)
-
-java.aesEncodeToBase64String(str: String, key: String, transformation: String, iv: String)
+// 创建Cipher
+java.createSymmetricCrypto(transformation, key, iv)
 ```
-* 3DES
+>解密加密参数 data支持ByteArray|Base64String|HexString|InputStream
 ```
-* @param data 被加密的字符串
-* @param key 密钥
-* @param mode 模式 ECB/CBC/CFB/OFB/CTR
-* @param padding 补码方式 NoPadding/PKCS5Padding/
-* @param iv 加盐
-java.tripleDESEncodeBase64Str(data: String,key: String,mode: String,padding: String,iv: String): String?
+//解密为ByteArray String
+cipher.decrypt(data)
+cipher.decryptStr(data)
+//加密为ByteArray Base64字符 HEX字符
+cipher.encrypt(data)
+cipher.encryptBase64(data)
+cipher.encryptHex(data)
+```
+* 非对称加密
+> 输入参数 key支持ByteArray|**Utf8String**
+```
+//创建cipher
+java.createAsymmetricCrypto(transformation)
+//设置密钥
+.setPublicKey(key)
+.setPrivateKey(key)
 
-java.tripleDESDecodeStr(data: String,key: String,mode: String,padding: String,iv: String): String?
+```
+> 解密加密参数 data支持ByteArray|Base64String|HexString|InputStream  
+```
+//解密为ByteArray String
+cipher.decrypt(data,  usePublicKey: Boolean? = true
+)
+cipher.decryptStr(data, usePublicKey: Boolean? = true
+)
+//加密为ByteArray Base64字符 HEX字符
+cipher.encrypt(data,  usePublicKey: Boolean? = true
+)
+cipher.encryptBase64(data,  usePublicKey: Boolean? = true
+)
+cipher.encryptHex(data,  usePublicKey: Boolean? = true
+)
+```
+* 签名
+> 输入参数 key 支持ByteArray|**Utf8String**
+```
+//创建Sign
+java.createSign(algorithm)
+//设置密钥
+.setPublicKey(key)
+.setPrivateKey(key)
+```
+> 签名参数 data支持ByteArray|inputStream|String
+```
+//签名输出 ByteArray HexString
+sign.sign(data)
+sign.signHex(data)
 ```
 * 摘要
 ```
-* @param data 被摘要数据
-* @param algorithm 签名算法 MD5/SHA1/SHA256/SHA512
-java.digestHex(data: String,algorithm: String,): String?
+java.digestHex(data: String, algorithm: String,): String?
 
-java.digestBase64Str(data: String,algorithm: String,): String?
+java.digestBase64Str(data: String, algorithm: String,): String?
 ```
 * md5
 ```
 java.md5Encode(str)
 java.md5Encode16(str)
 ```
+* HMac
+```
+java.HMacHex(data: String, algorithm: String, key: String): String
 
-## book对象的可用属性和方法
+java.HMacBase64(data: String, algorithm: String, key: String): String
+```
+
+## book对象的可用属性
 ### 属性
 > 使用方法: 在js中或{{}}中使用book.属性的方式即可获取.如在正文内容后加上 ##{{book.name+"正文卷"+title}} 可以净化 书名+正文卷+章节名称（如 我是大明星正文卷第二章我爸是豪门总裁） 这一类的字符.
 ```
@@ -194,11 +303,6 @@ order // 手动排序
 originOrder //书源排序
 variable // 自定义书籍变量信息(用于书源规则检索书籍信息)
  ```
-### 方法
-```
-//可在正文js中关闭净化 对于漫画源有用
-book.setUseReplaceRule(boolean)
-```
 
 ## chapter对象的部分可用属性
 > 使用方法: 在js中或{{}}中使用chapter.属性的方式即可获取.如在正文内容后加上 ##{{chapter.title+chapter.index}} 可以净化 章节标题+序号(如 第二章 天仙下凡2) 这一类的字符.
@@ -247,7 +351,7 @@ cookie.getCookie(url)
 获取cookie某一键值
 cookie.getKey(url,key)
 删除cookie
-cookie.removeCookie(key)
+cookie.removeCookie(url)
 ```
 
 ## cache对象的部分可用函数
@@ -255,13 +359,18 @@ cookie.removeCookie(key)
 > 保存至数据库和缓存文件(50M)，保存的内容较大时请使用`getFile putFile`
 ```
 保存
-cache.put(key, value , saveTime)
+cache.put(key: String, value: Any , saveTime: Int)
 读取数据库
-cache.get(key)
+cache.get(key: String): String?
 删除
-cache.delete(key)
+cache.delete(key: String)
 缓存文件内容
-cache.putFile(key, value, saveTime)
+cache.putFile(key: String, value: String, saveTime: Int)
 读取文件内容
-cache.getFile(key)
+cache.getFile(key: String): String?
+保存到内存
+cache.deleteMemory(key: String)
+cache.getFromMemory(key: String): Any?
+cache.putMemory(key: String, value: Any)
+
 ```

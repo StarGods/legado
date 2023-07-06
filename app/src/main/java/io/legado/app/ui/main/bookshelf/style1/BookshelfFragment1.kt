@@ -16,26 +16,31 @@ import io.legado.app.constant.PreferKey
 import io.legado.app.data.appDb
 import io.legado.app.data.entities.Book
 import io.legado.app.data.entities.BookGroup
-import io.legado.app.databinding.FragmentBookshelfBinding
+import io.legado.app.databinding.FragmentBookshelf1Binding
 import io.legado.app.lib.theme.accentColor
 import io.legado.app.lib.theme.primaryColor
+import io.legado.app.ui.book.group.GroupEditDialog
 import io.legado.app.ui.book.search.SearchActivity
 import io.legado.app.ui.main.bookshelf.BaseBookshelfFragment
 import io.legado.app.ui.main.bookshelf.style1.books.BooksFragment
-import io.legado.app.utils.getPrefInt
-import io.legado.app.utils.putPrefInt
-import io.legado.app.utils.setEdgeEffectColor
-import io.legado.app.utils.toastOnUi
+import io.legado.app.utils.*
 import io.legado.app.utils.viewbindingdelegate.viewBinding
+import kotlin.collections.set
 
 /**
  * 书架界面
  */
-class BookshelfFragment1 : BaseBookshelfFragment(R.layout.fragment_bookshelf),
+class BookshelfFragment1() : BaseBookshelfFragment(R.layout.fragment_bookshelf1),
     TabLayout.OnTabSelectedListener,
     SearchView.OnQueryTextListener {
 
-    private val binding by viewBinding(FragmentBookshelfBinding::bind)
+    constructor(position: Int) : this() {
+        val bundle = Bundle()
+        bundle.putInt("position", position)
+        arguments = bundle
+    }
+
+    private val binding by viewBinding(FragmentBookshelf1Binding::bind)
     private val adapter by lazy { TabFragmentPageAdapter(childFragmentManager) }
     private val tabLayout: TabLayout by lazy {
         binding.titleBar.findViewById(R.id.tab_layout)
@@ -88,15 +93,22 @@ class BookshelfFragment1 : BaseBookshelfFragment(R.layout.fragment_bookshelf),
                 bookGroups.addAll(data)
                 adapter.notifyDataSetChanged()
                 selectLastTab()
+                for (i in 0 until adapter.count) {
+                    tabLayout.getTabAt(i)?.view?.setOnLongClickListener {
+                        showDialogFragment(GroupEditDialog(bookGroups[i]))
+                        true
+                    }
+                }
             }
         }
     }
 
-    @Synchronized
     private fun selectLastTab() {
-        tabLayout.removeOnTabSelectedListener(this)
-        tabLayout.getTabAt(getPrefInt(PreferKey.saveTabPosition, 0))?.select()
-        tabLayout.addOnTabSelectedListener(this)
+        tabLayout.post {
+            tabLayout.removeOnTabSelectedListener(this)
+            tabLayout.getTabAt(getPrefInt(PreferKey.saveTabPosition, 0))?.select()
+            tabLayout.addOnTabSelectedListener(this)
+        }
     }
 
     override fun onTabReselected(tab: TabLayout.Tab) {
@@ -124,13 +136,28 @@ class BookshelfFragment1 : BaseBookshelfFragment(R.layout.fragment_bookshelf),
             return bookGroups[position].groupName
         }
 
-        override fun getItemPosition(`object`: Any): Int {
-            return POSITION_NONE
+        /**
+         * 确定视图位置是否更改时调用
+         * @return POSITION_NONE 已更改,刷新视图. POSITION_UNCHANGED 未更改,不刷新视图
+         */
+        override fun getItemPosition(any: Any): Int {
+            val fragment = any as BooksFragment
+            val position = fragment.position
+            val group = bookGroups.getOrNull(position)
+            if (fragment.groupId != group?.groupId) {
+                return POSITION_NONE
+            }
+            val bookSort = group.getRealBookSort()
+            fragment.setEnableRefresh(group.enableRefresh)
+            if (fragment.bookSort != bookSort) {
+                fragment.upBookSort(bookSort)
+            }
+            return POSITION_UNCHANGED
         }
 
         override fun getItem(position: Int): Fragment {
             val group = bookGroups[position]
-            return BooksFragment(position, group.groupId)
+            return BooksFragment(position, group)
         }
 
         override fun getCount(): Int {

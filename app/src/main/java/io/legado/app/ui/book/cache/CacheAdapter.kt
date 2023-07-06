@@ -10,6 +10,7 @@ import io.legado.app.base.adapter.ItemViewHolder
 import io.legado.app.base.adapter.RecyclerAdapter
 import io.legado.app.data.entities.Book
 import io.legado.app.databinding.ItemDownloadBinding
+import io.legado.app.help.book.isLocal
 import io.legado.app.model.CacheBook
 import io.legado.app.utils.gone
 import io.legado.app.utils.visible
@@ -17,7 +18,7 @@ import io.legado.app.utils.visible
 class CacheAdapter(context: Context, private val callBack: CallBack) :
     RecyclerAdapter<Book, ItemDownloadBinding>(context) {
 
-    val cacheChapters = hashMapOf<String, HashSet<String>>()
+
 
     override fun getViewBinding(parent: ViewGroup): ItemDownloadBinding {
         return ItemDownloadBinding.inflate(inflater, parent, false)
@@ -33,10 +34,10 @@ class CacheAdapter(context: Context, private val callBack: CallBack) :
             if (payloads.isEmpty()) {
                 tvName.text = item.name
                 tvAuthor.text = context.getString(R.string.author_show, item.getRealAuthor())
-                if (item.isLocalBook()) {
+                if (item.isLocal) {
                     tvDownload.setText(R.string.local_book)
                 } else {
-                    val cs = cacheChapters[item.bookUrl]
+                    val cs = callBack.cacheChapters[item.bookUrl]
                     if (cs == null) {
                         tvDownload.setText(R.string.loading)
                     } else {
@@ -49,10 +50,10 @@ class CacheAdapter(context: Context, private val callBack: CallBack) :
                     }
                 }
             } else {
-                if (item.isLocalBook()) {
+                if (item.isLocal) {
                     tvDownload.setText(R.string.local_book)
                 } else {
-                    val cacheSize = cacheChapters[item.bookUrl]?.size ?: 0
+                    val cacheSize = callBack.cacheChapters[item.bookUrl]?.size ?: 0
                     tvDownload.text =
                         context.getString(R.string.download_count, cacheSize, item.totalChapterNum)
                 }
@@ -67,7 +68,7 @@ class CacheAdapter(context: Context, private val callBack: CallBack) :
             ivDownload.setOnClickListener {
                 getItem(holder.layoutPosition)?.let { book ->
                     CacheBook.cacheBookMap[book.bookUrl]?.let {
-                        if (it.isRun()) {
+                        if (!it.isStop()) {
                             CacheBook.remove(context, book.bookUrl)
                         } else {
                             CacheBook.start(context, book, 0, book.totalChapterNum)
@@ -84,12 +85,12 @@ class CacheAdapter(context: Context, private val callBack: CallBack) :
     }
 
     private fun upDownloadIv(iv: ImageView, book: Book) {
-        if (book.isLocalBook()) {
+        if (book.isLocal) {
             iv.gone()
         } else {
             iv.visible()
             CacheBook.cacheBookMap[book.bookUrl]?.let {
-                if (it.isRun()) {
+                if (!it.isStop()) {
                     iv.setImageResource(R.drawable.ic_stop_black_24dp)
                 } else {
                     iv.setImageResource(R.drawable.ic_play_24dp)
@@ -120,6 +121,7 @@ class CacheAdapter(context: Context, private val callBack: CallBack) :
     }
 
     interface CallBack {
+        val cacheChapters: HashMap<String, HashSet<String>>
         fun export(position: Int)
         fun exportProgress(bookUrl: String): Int?
         fun exportMsg(bookUrl: String): String?

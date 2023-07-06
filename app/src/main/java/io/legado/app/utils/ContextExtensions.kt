@@ -1,4 +1,4 @@
-@file:Suppress("unused")
+@file:Suppress("unused", "UnusedReceiverParameter")
 
 package io.legado.app.utils
 
@@ -186,6 +186,7 @@ val Context.sysScreenOffTime: Int
     }
 
 val Context.statusBarHeight: Int
+    @SuppressLint("DiscouragedApi", "InternalInsetResource")
     get() {
         if (Build.BOARD == "windows") {
             return 0
@@ -195,6 +196,7 @@ val Context.statusBarHeight: Int
     }
 
 val Context.navigationBarHeight: Int
+    @SuppressLint("DiscouragedApi", "InternalInsetResource")
     get() {
         val resourceId = resources.getIdentifier("navigation_bar_height", "dimen", "android")
         return resources.getDimensionPixelSize(resourceId)
@@ -302,6 +304,7 @@ fun Context.openUrl(url: String) {
         startActivity(IntentHelp.getBrowserIntent(url))
     } catch (e: Exception) {
         toastOnUi(e.localizedMessage ?: "open url error")
+        e.printOnDebug()
     }
 }
 
@@ -310,9 +313,11 @@ fun Context.openUrl(uri: Uri) {
         startActivity(IntentHelp.getBrowserIntent(uri))
     } catch (e: Exception) {
         toastOnUi(e.localizedMessage ?: "open url error")
+        e.printOnDebug()
     }
 }
 
+@SuppressLint("ObsoleteSdkInt")
 fun Context.openFileUri(uri: Uri, type: String? = null) {
     val intent = Intent()
     intent.action = Intent.ACTION_VIEW
@@ -325,12 +330,14 @@ fun Context.openFileUri(uri: Uri, type: String? = null) {
     try {
         startActivity(intent)
     } catch (e: Exception) {
-        toastOnUi(e.msg)
+        toastOnUi(e.stackTraceStr)
+        e.printOnDebug()
     }
 }
 
 @Suppress("DEPRECATION")
 val Context.isWifiConnect: Boolean
+    @SuppressLint("MissingPermission")
     get() {
         val info = connectivityManager.getNetworkInfo(ConnectivityManager.TYPE_WIFI)
         return info?.isConnected == true
@@ -338,9 +345,10 @@ val Context.isWifiConnect: Boolean
 
 val Context.isPad: Boolean
     get() {
-        return resources.configuration.screenLayout and Configuration.SCREENLAYOUT_SIZE_MASK >= Configuration.SCREENLAYOUT_SIZE_LARGE
+        return (resources.configuration.screenLayout and Configuration.SCREENLAYOUT_SIZE_MASK) >= Configuration.SCREENLAYOUT_SIZE_LARGE
     }
 
+@Suppress("DEPRECATION")
 val Context.channel: String
     get() {
         try {

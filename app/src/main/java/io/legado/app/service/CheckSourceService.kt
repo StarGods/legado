@@ -6,6 +6,7 @@ import com.script.ScriptException
 import io.legado.app.R
 import io.legado.app.base.BaseService
 import io.legado.app.constant.AppConst
+import io.legado.app.constant.BookSourceType
 import io.legado.app.constant.EventBus
 import io.legado.app.constant.IntentAction
 import io.legado.app.data.appDb
@@ -14,7 +15,9 @@ import io.legado.app.data.entities.BookSource
 import io.legado.app.exception.ContentEmptyException
 import io.legado.app.exception.NoStackTraceException
 import io.legado.app.exception.TocEmptyException
+import io.legado.app.help.IntentData
 import io.legado.app.help.config.AppConfig
+import io.legado.app.help.source.exploreKinds
 import io.legado.app.model.CheckSource
 import io.legado.app.model.Debug
 import io.legado.app.model.webBook.WebBook
@@ -23,11 +26,13 @@ import io.legado.app.utils.activityPendingIntent
 import io.legado.app.utils.postEvent
 import io.legado.app.utils.servicePendingIntent
 import io.legado.app.utils.toastOnUi
+import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Dispatchers.IO
 import kotlinx.coroutines.TimeoutCancellationException
 import kotlinx.coroutines.asCoroutineDispatcher
 import kotlinx.coroutines.launch
 import org.mozilla.javascript.WrappedException
+import splitties.init.appCtx
 import java.util.concurrent.Executors
 import kotlin.math.min
 
@@ -41,7 +46,7 @@ class CheckSourceService : BaseService() {
     private val allIds = ArrayList<String>()
     private val checkedIds = ArrayList<String>()
     private var processIndex = 0
-    private var notificationMsg = ""
+    private var notificationMsg = appCtx.getString(R.string.service_starting)
 
     private val notificationBuilder by lazy {
         NotificationCompat.Builder(this, AppConst.channelIdReadAloud)
@@ -59,18 +64,14 @@ class CheckSourceService : BaseService() {
             .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
     }
 
-    override fun onCreate() {
-        super.onCreate()
-        notificationMsg = getString(R.string.start)
-        upNotification()
-    }
-
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         when (intent?.action) {
-            IntentAction.start -> intent.getStringArrayListExtra("selectIds")?.let {
+            IntentAction.start -> IntentData.get<List<String>>("checkSourceSelectedIds")?.let {
                 check(it)
             }
-            else -> stopSelf()
+
+            IntentAction.resume -> upNotification()
+            IntentAction.stop -> stopSelf()
         }
         return super.onStartCommand(intent, flags, startId)
     }
@@ -121,7 +122,11 @@ class CheckSourceService : BaseService() {
      *校验书源
      */
     private fun check(source: BookSource) {
-        execute(context = searchCoroutine) {
+        execute(
+            context = searchCoroutine,
+            start = CoroutineStart.LAZY,
+            executeContext = IO
+        ) {
             Debug.startChecking(source)
             var searchWord = CheckSource.keyword
             source.ruleSearch?.checkKeyWord?.let {
@@ -133,24 +138,26 @@ class CheckSourceService : BaseService() {
             source.bookSourceComment = source.bookSourceComment
                 ?.split("\n\n")
                 ?.filterNot {
-                    it.startsWith("Error: ")
+                    it.startsWith("// Error: ")
                 }?.joinToString("\n")
-            //校验搜索书籍 用户设置校验搜索 并且 搜索链接不为空
-            if (CheckSource.checkSearch && !source.searchUrl.isNullOrBlank()) {
-                val searchBooks = WebBook.searchBookAwait(this, source, searchWord)
-                if (searchBooks.isEmpty()) {
-                    source.addGroup("搜索失效")
-                    if (!CheckSource.checkDiscovery) {
-                        throw NoStackTraceException("搜索书籍为空")
+            //校验搜索书籍
+            if (CheckSource.checkSearch) {
+                if (!source.searchUrl.isNullOrBlank()) {
+                    source.removeGroup("搜索链接规则为空")
+                    val searchBooks = WebBook.searchBookAwait(source, searchWord)
+                    if (searchBooks.isEmpty()) {
+                        source.addGroup("搜索失效")
+                    } else {
+                        source.removeGroup("搜索失效")
+                        checkBook(searchBooks.first().toBook(), source)
                     }
                 } else {
-                    source.removeGroup("搜索失效")
-                    checkBook(searchBooks.first().toBook(), source)
+                    source.addGroup("搜索链接规则为空")
                 }
             }
             //校验发现书籍
-            if (CheckSource.checkDiscovery) {
-                val exs = source.exploreKinds
+            if (CheckSource.checkDiscovery && !source.exploreUrl.isNullOrBlank()) {
+                val exs = source.exploreKinds()
                 var url: String? = null
                 for (ex in exs) {
                     url = ex.url
@@ -159,18 +166,12 @@ class CheckSourceService : BaseService() {
                     }
                 }
                 if (url.isNullOrBlank()) {
-                    when {
-                        !CheckSource.checkSearch -> throw NoStackTraceException("没有发现")
-                        source.hasGroup("搜索失效") -> throw NoStackTraceException("搜索内容为空并且没有发现")
-                    }
+                    source.addGroup("发现规则为空")
                 } else {
-                    val exploreBooks = WebBook.exploreBookAwait(this, source, url)
+                    source.removeGroup("发现规则为空")
+                    val exploreBooks = WebBook.exploreBookAwait(source, url)
                     if (exploreBooks.isEmpty()) {
                         source.addGroup("发现失效")
-                        when {
-                            !CheckSource.checkSearch -> throw NoStackTraceException("发现书籍为空")
-                            source.hasGroup("搜索失效") -> throw NoStackTraceException("搜索内容和发现书籍为空")
-                        }
                     } else {
                         source.removeGroup("发现失效")
                         checkBook(exploreBooks.first().toBook(), source, false)
@@ -187,17 +188,16 @@ class CheckSourceService : BaseService() {
                     !is NoStackTraceException -> source.addGroup("网站失效")
                 }
                 source.bookSourceComment =
-                    "Error: ${it.localizedMessage}" + if (source.bookSourceComment.isNullOrBlank())
+                    "// Error: ${it.localizedMessage}" + if (source.bookSourceComment.isNullOrBlank())
                         "" else "\n\n${source.bookSourceComment}"
                 Debug.updateFinalMessage(source.bookSourceUrl, "校验失败:${it.localizedMessage}")
             }.onSuccess(searchCoroutine) {
-                source.removeGroup("校验超时")
                 Debug.updateFinalMessage(source.bookSourceUrl, "校验成功")
             }.onFinally(IO) {
                 source.respondTime = Debug.getRespondTime(source.bookSourceUrl)
                 appDb.bookSourceDao.update(source)
                 onNext(source.bookSourceUrl, source.bookSourceName)
-            }
+            }.start()
     }
 
     /**
@@ -209,16 +209,18 @@ class CheckSourceService : BaseService() {
             //校验详情
             if (CheckSource.checkInfo) {
                 if (mBook.tocUrl.isBlank()) {
-                    mBook = WebBook.getBookInfoAwait(this, source, mBook)
+                    mBook = WebBook.getBookInfoAwait(source, mBook)
                 }
                 //校验目录
-                if (CheckSource.checkCategory) {
-                    val toc = WebBook.getChapterListAwait(this, source, mBook).getOrThrow()
+                if (CheckSource.checkCategory &&
+                    source.bookSourceType != BookSourceType.file
+                ) {
+                    val toc = WebBook.getChapterListAwait(source, mBook).getOrThrow()
+                        .filter { !(it.isVolume && it.url.startsWith(it.title)) }
                     val nextChapterUrl = toc.getOrNull(1)?.url ?: toc.first().url
                     //校验正文
                     if (CheckSource.checkContent) {
                         WebBook.getContentAwait(
-                            this,
                             bookSource = source,
                             book = mBook,
                             bookChapter = toc.first(),
@@ -258,7 +260,7 @@ class CheckSourceService : BaseService() {
     /**
      * 更新通知
      */
-    private fun upNotification() {
+    override fun upNotification() {
         notificationBuilder.setContentText(notificationMsg)
         notificationBuilder.setProgress(allIds.size, checkedIds.size, false)
         postEvent(EventBus.CHECK_SOURCE, notificationMsg)

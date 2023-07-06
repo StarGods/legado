@@ -11,10 +11,12 @@ import io.legado.app.constant.EventBus
 import io.legado.app.exception.NoStackTraceException
 import io.legado.app.help.MediaHelp
 import io.legado.app.help.config.AppConfig
+import io.legado.app.help.coroutine.Coroutine
 import io.legado.app.lib.dialogs.SelectItem
 import io.legado.app.model.ReadAloud
 import io.legado.app.model.ReadBook
 import io.legado.app.utils.*
+import kotlinx.coroutines.ensureActive
 
 /**
  * 本地朗读
@@ -24,11 +26,11 @@ class TTSReadAloudService : BaseReadAloudService(), TextToSpeech.OnInitListener 
     private var textToSpeech: TextToSpeech? = null
     private var ttsInitFinish = false
     private val ttsUtteranceListener = TTSUtteranceListener()
+    private var speakJob: Coroutine<*>? = null
 
     override fun onCreate() {
         super.onCreate()
         initTts()
-        upSpeechRate()
     }
 
     override fun onDestroy() {
@@ -45,6 +47,7 @@ class TTSReadAloudService : BaseReadAloudService(), TextToSpeech.OnInitListener 
         } else {
             TextToSpeech(this, this, engine)
         }
+        upSpeechRate()
     }
 
     @Synchronized
@@ -74,28 +77,34 @@ class TTSReadAloudService : BaseReadAloudService(), TextToSpeech.OnInitListener 
         if (contentList.isEmpty()) {
             AppLog.putDebug("朗读列表为空")
             ReadBook.readAloud()
-        } else {
-            super.play()
-            kotlin.runCatching {
-                MediaHelp.playSilentSound(this@TTSReadAloudService)
-                val tts = textToSpeech ?: throw NoStackTraceException("tts is null")
-                var result = tts.speak("", TextToSpeech.QUEUE_FLUSH, null, null)
-                if (result == TextToSpeech.ERROR) {
-                    clearTTS()
-                    initTts()
-                    return
-                }
-                for (i in nowSpeak until contentList.size) {
-                    val text = contentList[i].replace(AppPattern.notReadAloudRegex, "")
-                    result = tts.speak(text, TextToSpeech.QUEUE_ADD, null, AppConst.APP_TAG + i)
-                    if (result == TextToSpeech.ERROR) {
-                        AppLog.put("tts朗读出错:$text")
-                    }
-                }
-            }.onFailure {
-                AppLog.put("tts朗读出错", it)
-                toastOnUi(it.localizedMessage)
+            return
+        }
+        super.play()
+        MediaHelp.playSilentSound(this@TTSReadAloudService)
+        speakJob?.cancel()
+        speakJob = execute {
+            val tts = textToSpeech ?: throw NoStackTraceException("tts is null")
+            var result = tts.speak("", TextToSpeech.QUEUE_FLUSH, null, null)
+            if (result == TextToSpeech.ERROR) {
+                clearTTS()
+                initTts()
+                return@execute
             }
+            val contentList = contentList
+            for (i in nowSpeak until contentList.size) {
+                ensureActive()
+                val text = contentList[i]
+                if (text.matches(AppPattern.notReadAloudRegex)) {
+                    continue
+                }
+                result = tts.speak(text, TextToSpeech.QUEUE_ADD, null, AppConst.APP_TAG + i)
+                if (result == TextToSpeech.ERROR) {
+                    AppLog.put("tts朗读出错:$text")
+                }
+            }
+        }.onError {
+            AppLog.put("tts朗读出错", it)
+            toastOnUi(it.localizedMessage)
         }
     }
 
@@ -121,8 +130,9 @@ class TTSReadAloudService : BaseReadAloudService(), TextToSpeech.OnInitListener 
     /**
      * 暂停朗读
      */
-    override fun pauseReadAloud(pause: Boolean) {
-        super.pauseReadAloud(pause)
+    override fun pauseReadAloud(abandonFocus: Boolean) {
+        super.pauseReadAloud(abandonFocus)
+        speakJob?.cancel()
         textToSpeech?.stop()
     }
 
@@ -150,11 +160,15 @@ class TTSReadAloudService : BaseReadAloudService(), TextToSpeech.OnInitListener 
         }
 
         override fun onDone(s: String) {
-            readAloudNumber += contentList[nowSpeak].length + 1
-            nowSpeak++
-            if (nowSpeak >= contentList.size) {
-                nextChapter()
-            }
+            //跳过全标点段落
+            do {
+                readAloudNumber += contentList[nowSpeak].length + 1
+                nowSpeak++
+                if (nowSpeak >= contentList.size) {
+                    nextChapter()
+                    return
+                }
+            } while (contentList[nowSpeak].matches(AppPattern.notReadAloudRegex))
         }
 
         override fun onRangeStart(utteranceId: String?, start: Int, end: Int, frame: Int) {
@@ -168,6 +182,7 @@ class TTSReadAloudService : BaseReadAloudService(), TextToSpeech.OnInitListener 
             }
         }
 
+        @Deprecated("Deprecated in Java")
         override fun onError(s: String) {
             //nothing
         }

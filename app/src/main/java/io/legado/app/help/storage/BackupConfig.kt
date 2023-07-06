@@ -7,6 +7,9 @@ import io.legado.app.utils.GSON
 import io.legado.app.utils.fromJsonObject
 import splitties.init.appCtx
 
+/**
+ * 备份配置
+ */
 object BackupConfig {
 
     private val ignoreConfigPath = FileUtils.getPath(appCtx.filesDir, "restoreIgnore.json")
@@ -23,11 +26,6 @@ object BackupConfig {
         PreferKey.bookshelfLayout,
         PreferKey.showRss,
         PreferKey.threadCount,
-        PreferKey.webDavUrl,
-        PreferKey.webDavDir,
-        PreferKey.webDavAccount,
-        PreferKey.webDavPassword,
-        PreferKey.launcherIcon
     )
 
     //配置忽略标题
@@ -45,7 +43,13 @@ object BackupConfig {
         PreferKey.defaultCover,
         PreferKey.defaultCoverDark,
         PreferKey.backupPath,
-        PreferKey.defaultBookTreeUri
+        PreferKey.defaultBookTreeUri,
+        PreferKey.webDavDeviceName,
+        PreferKey.launcherIcon,
+        PreferKey.bitmapCacheSize,
+        PreferKey.webServiceWakeLock,
+        PreferKey.readAloudWakeLock,
+        PreferKey.audioPlayWakeLock
     )
 
     //阅读配置
@@ -54,7 +58,16 @@ object BackupConfig {
         PreferKey.shareLayout,
         PreferKey.hideStatusBar,
         PreferKey.hideNavigationBar,
-        PreferKey.autoReadSpeed
+        PreferKey.autoReadSpeed,
+        PreferKey.clickActionTL,
+        PreferKey.clickActionTC,
+        PreferKey.clickActionTR,
+        PreferKey.clickActionML,
+        PreferKey.clickActionMC,
+        PreferKey.clickActionMR,
+        PreferKey.clickActionBL,
+        PreferKey.clickActionBC,
+        PreferKey.clickActionBR
     )
 
 

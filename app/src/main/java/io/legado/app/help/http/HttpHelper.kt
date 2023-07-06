@@ -1,20 +1,42 @@
 package io.legado.app.help.http
 
 import io.legado.app.constant.AppConst
+import io.legado.app.help.CacheManager
 import io.legado.app.help.config.AppConfig
-import io.legado.app.help.http.cronet.CronetInterceptor
-import io.legado.app.help.http.cronet.CronetLoader
-import okhttp3.ConnectionSpec
-import okhttp3.Credentials
-import okhttp3.Interceptor
-import okhttp3.OkHttpClient
+import io.legado.app.help.http.CookieManager.cookieJarHeader
+import io.legado.app.utils.NetworkUtils
+import okhttp3.*
 import java.net.InetSocketAddress
 import java.net.Proxy
 import java.util.concurrent.ConcurrentHashMap
+import java.util.concurrent.ThreadFactory
+import java.util.concurrent.ThreadPoolExecutor
 import java.util.concurrent.TimeUnit
 
 private val proxyClientCache: ConcurrentHashMap<String, OkHttpClient> by lazy {
     ConcurrentHashMap()
+}
+
+val cookieJar by lazy {
+    object : CookieJar {
+
+        override fun loadForRequest(url: HttpUrl): List<Cookie> {
+            return emptyList()
+        }
+
+        override fun saveFromResponse(url: HttpUrl, cookies: List<Cookie>) {
+            if (cookies.isEmpty()) return
+            //临时保存 书源启用cookie选项再添加到数据库
+            val cookieBuilder = StringBuilder()
+            cookies.forEachIndexed { index, cookie ->
+                if (index > 0) cookieBuilder.append(";")
+                cookieBuilder.append(cookie.name).append('=').append(cookie.value)
+            }
+            val domain = NetworkUtils.getSubDomain(url.toString())
+            CacheManager.putMemory("${domain}_cookieJar", cookieBuilder.toString())
+        }
+
+    }
 }
 
 val okHttpClient: OkHttpClient by lazy {
@@ -29,27 +51,63 @@ val okHttpClient: OkHttpClient by lazy {
         .writeTimeout(15, TimeUnit.SECONDS)
         .readTimeout(15, TimeUnit.SECONDS)
         .callTimeout(60, TimeUnit.SECONDS)
+        //.cookieJar(cookieJar = cookieJar)
         .sslSocketFactory(SSLHelper.unsafeSSLSocketFactory, SSLHelper.unsafeTrustManager)
         .retryOnConnectionFailure(true)
         .hostnameVerifier(SSLHelper.unsafeHostnameVerifier)
         .connectionSpecs(specs)
         .followRedirects(true)
         .followSslRedirects(true)
+        .addInterceptor(OkHttpExceptionInterceptor)
         .addInterceptor(Interceptor { chain ->
             val request = chain.request()
             val builder = request.newBuilder()
             if (request.header(AppConst.UA_NAME) == null) {
                 builder.addHeader(AppConst.UA_NAME, AppConfig.userAgent)
+            } else if (request.header(AppConst.UA_NAME) == "null") {
+                builder.removeHeader(AppConst.UA_NAME)
             }
             builder.addHeader("Keep-Alive", "300")
             builder.addHeader("Connection", "Keep-Alive")
             builder.addHeader("Cache-Control", "no-cache")
             chain.proceed(builder.build())
         })
-    if (!AppConfig.isGooglePlay && AppConfig.isCronet && CronetLoader.install()) {
-        builder.addInterceptor(CronetInterceptor(null))
+        .addNetworkInterceptor { chain ->
+            var request = chain.request()
+            val enableCookieJar = request.header(cookieJarHeader) != null
+
+            if (enableCookieJar) {
+                val requestBuilder = request.newBuilder()
+                requestBuilder.removeHeader(cookieJarHeader)
+                request = CookieManager.loadRequest(requestBuilder.build())
+            }
+
+            val networkResponse = chain.proceed(request)
+
+            if (enableCookieJar) {
+                CookieManager.saveResponse(networkResponse)
+            }
+            networkResponse
+        }
+    if (!AppConst.isPlayChannel && AppConfig.isCronet) {
+        if (Cronet.loader?.install() == true) {
+            Cronet.interceptor?.let {
+                builder.addInterceptor(it)
+            }
+        }
     }
-    builder.build()
+    builder.build().apply {
+        val okHttpName =
+            OkHttpClient::class.java.name.removePrefix("okhttp3.").removeSuffix("Client")
+        val executor = dispatcher.executorService as ThreadPoolExecutor
+        val threadName = "$okHttpName Dispatcher"
+        executor.threadFactory = ThreadFactory { runnable ->
+            Thread(runnable, threadName).apply {
+                isDaemon = false
+                uncaughtExceptionHandler = OkhttpUncaughtExceptionHandler
+            }
+        }
+    }
 }
 
 /**
@@ -74,7 +132,7 @@ fun getProxyClient(proxy: String? = null): OkHttpClient {
         username = group.groupValues[4].split("@")[1]
         password = group.groupValues[4].split("@")[2]
     }
-    if (type != "direct" && host != "") {
+    if (host != "") {
         val builder = okHttpClient.newBuilder()
         if (type == "http") {
             builder.proxy(Proxy(Proxy.Type.HTTP, InetSocketAddress(host, port)))

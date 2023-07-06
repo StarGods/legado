@@ -16,7 +16,7 @@ import kotlinx.coroutines.Dispatchers.IO
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
-class BookmarkDialog() : BaseDialogFragment(R.layout.dialog_bookmark) {
+class BookmarkDialog() : BaseDialogFragment(R.layout.dialog_bookmark, true) {
 
     constructor(bookmark: Bookmark, editPos: Int = -1) : this() {
         arguments = Bundle().apply {
@@ -29,7 +29,7 @@ class BookmarkDialog() : BaseDialogFragment(R.layout.dialog_bookmark) {
 
     override fun onStart() {
         super.onStart()
-        setLayout(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT)
+        setLayout(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT)
     }
 
     override fun onFragmentCreated(view: View, savedInstanceState: Bundle?) {
@@ -38,6 +38,8 @@ class BookmarkDialog() : BaseDialogFragment(R.layout.dialog_bookmark) {
             dismiss()
             return
         }
+
+        @Suppress("DEPRECATION")
         val bookmark = arguments.getParcelable<Bookmark>("bookmark")
         bookmark ?: let {
             dismiss()
@@ -59,7 +61,6 @@ class BookmarkDialog() : BaseDialogFragment(R.layout.dialog_bookmark) {
                     withContext(IO) {
                         appDb.bookmarkDao.insert(bookmark)
                     }
-                    getCallback()?.upBookmark(editPos, bookmark)
                     dismiss()
                 }
             }
@@ -68,24 +69,10 @@ class BookmarkDialog() : BaseDialogFragment(R.layout.dialog_bookmark) {
                     withContext(IO) {
                         appDb.bookmarkDao.delete(bookmark)
                     }
-                    getCallback()?.deleteBookmark(editPos)
                     dismiss()
                 }
             }
         }
-    }
-
-    private fun getCallback(): Callback? {
-        return (parentFragment as? Callback)
-            ?: activity as? Callback
-    }
-
-    interface Callback {
-
-        fun upBookmark(pos: Int, bookmark: Bookmark)
-
-        fun deleteBookmark(pos: Int)
-
     }
 
 }

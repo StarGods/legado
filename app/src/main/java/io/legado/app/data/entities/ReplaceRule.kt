@@ -6,7 +6,10 @@ import androidx.room.ColumnInfo
 import androidx.room.Entity
 import androidx.room.Index
 import androidx.room.PrimaryKey
+import io.legado.app.R
+import io.legado.app.exception.NoStackTraceException
 import kotlinx.parcelize.Parcelize
+import splitties.init.appCtx
 import java.util.regex.Pattern
 import java.util.regex.PatternSyntaxException
 
@@ -37,15 +40,20 @@ data class ReplaceRule(
     //作用于正文
     @ColumnInfo(defaultValue = "1")
     var scopeContent: Boolean = true,
+    //排除范围
+    var excludeScope: String? = null,
     //是否启用
     @ColumnInfo(defaultValue = "1")
     var isEnabled: Boolean = true,
     //是否正则
     @ColumnInfo(defaultValue = "1")
     var isRegex: Boolean = true,
+    //超时时间
+    @ColumnInfo(defaultValue = "3000")
+    var timeoutMillisecond: Long = 3000L,
     //排序
     @ColumnInfo(name = "sortOrder", defaultValue = "0")
-    var order: Int = 0
+    var order: Int = Int.MIN_VALUE
 ) : Parcelable {
 
     override fun equals(other: Any?): Boolean {
@@ -80,5 +88,19 @@ data class ReplaceRule(
             }
         }
         return true
+    }
+
+    @Throws(NoStackTraceException::class)
+    fun checkValid() {
+        if (!isValid()) {
+            throw NoStackTraceException(appCtx.getString(R.string.replace_rule_invalid))
+        }
+    }
+
+    fun getValidTimeoutMillisecond(): Long {
+        if (timeoutMillisecond <= 0) {
+            return 3000L
+        }
+        return timeoutMillisecond
     }
 }

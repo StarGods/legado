@@ -1,8 +1,8 @@
 package io.legado.app.data.entities
 
 import androidx.room.Entity
-import androidx.room.Ignore
 import androidx.room.PrimaryKey
+import io.legado.app.utils.GSON
 
 
 @Entity(tableName = "txtTocRules")
@@ -11,11 +11,20 @@ data class TxtTocRule(
     var id: Long = System.currentTimeMillis(),
     var name: String = "",
     var rule: String = "",
+    var example: String? = null,
     var serialNumber: Int = -1,
     var enable: Boolean = true
 ) {
 
-    @Ignore
-    constructor() : this(name = "")
+    override fun hashCode(): Int {
+        return id.hashCode()
+    }
+
+    override fun equals(other: Any?): Boolean {
+        if (other is TxtTocRule) {
+            return id == other.id
+        }
+        return false
+    }
 
 }

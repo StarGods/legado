@@ -15,8 +15,10 @@ import io.legado.app.data.appDb
 import io.legado.app.data.entities.RssSource
 import io.legado.app.databinding.FragmentRssBinding
 import io.legado.app.databinding.ItemRssBinding
+import io.legado.app.lib.dialogs.alert
 import io.legado.app.lib.theme.primaryColor
 import io.legado.app.lib.theme.primaryTextColor
+import io.legado.app.ui.main.MainFragmentInterface
 import io.legado.app.ui.rss.article.RssSortActivity
 import io.legado.app.ui.rss.favorites.RssFavoritesActivity
 import io.legado.app.ui.rss.read.ReadRssActivity
@@ -24,7 +26,12 @@ import io.legado.app.ui.rss.source.edit.RssSourceEditActivity
 import io.legado.app.ui.rss.source.manage.RssSourceActivity
 import io.legado.app.ui.rss.source.manage.RssSourceViewModel
 import io.legado.app.ui.rss.subscription.RuleSubActivity
-import io.legado.app.utils.*
+import io.legado.app.utils.applyTint
+import io.legado.app.utils.cnCompare
+import io.legado.app.utils.openUrl
+import io.legado.app.utils.setEdgeEffectColor
+import io.legado.app.utils.splitNotBlank
+import io.legado.app.utils.startActivity
 import io.legado.app.utils.viewbindingdelegate.viewBinding
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.catch
@@ -35,8 +42,17 @@ import kotlinx.coroutines.launch
 /**
  * 订阅界面
  */
-class RssFragment : VMBaseFragment<RssSourceViewModel>(R.layout.fragment_rss),
+class RssFragment() : VMBaseFragment<RssSourceViewModel>(R.layout.fragment_rss),
+    MainFragmentInterface,
     RssAdapter.CallBack {
+
+    constructor(position: Int) : this() {
+        val bundle = Bundle()
+        bundle.putInt("position", position)
+        arguments = bundle
+    }
+
+    override val position: Int? get() = arguments?.getInt("position")
 
     private val binding by viewBinding(FragmentRssBinding::bind)
     override val viewModel by viewModels<RssSourceViewModel>()
@@ -123,7 +139,7 @@ class RssFragment : VMBaseFragment<RssSourceViewModel>(R.layout.fragment_rss),
     private fun initGroupData() {
         groupsFlowJob?.cancel()
         groupsFlowJob = launch {
-            appDb.rssSourceDao.flowGroup().conflate().collect {
+            appDb.rssSourceDao.flowGroupEnabled().conflate().collect {
                 groups.clear()
                 it.map { group ->
                     groups.addAll(group.splitNotBlank(AppPattern.splitGroupRegex))
@@ -140,9 +156,9 @@ class RssFragment : VMBaseFragment<RssSourceViewModel>(R.layout.fragment_rss),
                 searchKey.isNullOrEmpty() -> appDb.rssSourceDao.flowEnabled()
                 searchKey.startsWith("group:") -> {
                     val key = searchKey.substringAfter("group:")
-                    appDb.rssSourceDao.flowEnabledByGroup("%$key%")
+                    appDb.rssSourceDao.flowEnabledByGroup(key)
                 }
-                else -> appDb.rssSourceDao.flowEnabled("%$searchKey%")
+                else -> appDb.rssSourceDao.flowEnabled(searchKey)
             }.catch {
                 AppLog.put("订阅界面更新数据出错", it)
             }.collect {
@@ -179,6 +195,16 @@ class RssFragment : VMBaseFragment<RssSourceViewModel>(R.layout.fragment_rss),
     }
 
     override fun del(rssSource: RssSource) {
-        viewModel.del(rssSource)
+        alert(R.string.draw) {
+            setMessage(getString(R.string.sure_del) + "\n" + rssSource.sourceName)
+            noButton()
+            yesButton {
+                viewModel.del(rssSource)
+            }
+        }
+    }
+
+    override fun disable(rssSource: RssSource) {
+        viewModel.disable(rssSource)
     }
 }

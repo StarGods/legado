@@ -1,8 +1,10 @@
 package io.legado.app.service
 
+import android.annotation.SuppressLint
 import android.content.Context
 import android.content.Intent
 import android.os.Build
+import android.os.PowerManager
 import androidx.core.app.NotificationCompat
 import io.legado.app.R
 import io.legado.app.base.BaseService
@@ -10,10 +12,12 @@ import io.legado.app.constant.AppConst
 import io.legado.app.constant.EventBus
 import io.legado.app.constant.IntentAction
 import io.legado.app.constant.PreferKey
+import io.legado.app.receiver.NetworkChangedListener
 import io.legado.app.utils.*
 import io.legado.app.web.HttpServer
 import io.legado.app.web.WebSocketServer
-
+import splitties.init.appCtx
+import splitties.systemservices.powerManager
 import java.io.IOException
 
 class WebService : BaseService() {
@@ -30,24 +34,53 @@ class WebService : BaseService() {
             context.stopService<WebService>()
         }
 
+        fun serve() {
+            appCtx.startService<WebService> {
+                action = "serve"
+            }
+        }
     }
 
+    private val useWakeLock = appCtx.getPrefBoolean(PreferKey.webServiceWakeLock, false)
+    private val wakeLock: PowerManager.WakeLock by lazy {
+        powerManager.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "legado:webService")
+            .apply {
+                setReferenceCounted(false)
+            }
+    }
     private var httpServer: HttpServer? = null
     private var webSocketServer: WebSocketServer? = null
-    private var notificationContent = ""
+    private var notificationContent = appCtx.getString(R.string.service_starting)
+    private val networkChangedListener by lazy {
+        NetworkChangedListener(this)
+    }
 
     override fun onCreate() {
         super.onCreate()
+        if (useWakeLock) wakeLock.acquire(10 * 60 * 1000L /*10 minutes*/)
         isRun = true
-        notificationContent = getString(R.string.service_starting)
-        upNotification()
         upTile(true)
+        networkChangedListener.register()
+        networkChangedListener.onNetworkChanged = {
+            val address = NetworkUtils.getLocalIPAddress()
+            if (address == null) {
+                hostAddress = getString(R.string.network_connection_unavailable)
+                notificationContent = hostAddress
+                upNotification()
+            } else {
+                hostAddress = getString(R.string.http_ip, address.hostAddress, getPort())
+                notificationContent = hostAddress
+                upNotification()
+            }
+            postEvent(EventBus.WEB_SERVICE, hostAddress)
+        }
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         when (intent?.action) {
             IntentAction.stop -> stopSelf()
             "copyHostAddress" -> sendToClip(hostAddress)
+            "serve" -> if (useWakeLock) wakeLock.acquire(10 * 60 * 1000L /*10 minutes*/)
             else -> upWebServer()
         }
         return super.onStartCommand(intent, flags, startId)
@@ -55,6 +88,8 @@ class WebService : BaseService() {
 
     override fun onDestroy() {
         super.onDestroy()
+        if (useWakeLock) wakeLock.release()
+        networkChangedListener.unRegister()
         isRun = false
         if (httpServer?.isAlive == true) {
             httpServer?.stop()
@@ -92,6 +127,7 @@ class WebService : BaseService() {
                 stopSelf()
             }
         } else {
+            toastOnUi("web service cant start, no ip address")
             stopSelf()
         }
     }
@@ -107,7 +143,7 @@ class WebService : BaseService() {
     /**
      * 更新通知
      */
-    private fun upNotification() {
+    override fun upNotification() {
         val builder = NotificationCompat.Builder(this, AppConst.channelIdWeb)
             .setSmallIcon(R.drawable.ic_web_service_noti)
             .setOngoing(true)
@@ -126,6 +162,7 @@ class WebService : BaseService() {
         startForeground(AppConst.notificationIdWeb, notification)
     }
 
+    @SuppressLint("ObsoleteSdkInt")
     private fun upTile(active: Boolean) {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
             kotlin.runCatching {

@@ -62,6 +62,11 @@ class RssArticlesFragment() : VMBaseFragment<RssArticlesViewModel>(R.layout.frag
     private fun initView() = binding.run {
         refreshLayout.setColorSchemeColors(accentColor)
         recyclerView.setEdgeEffectColor(primaryColor)
+        loadMoreView.setOnClickListener {
+            if (!loadMoreView.isLoading) {
+                scrollToBottom(true)
+            }
+        }
         recyclerView.layoutManager = if (activityViewModel.isGridLayout) {
             recyclerView.setPadding(8, 0, 8, 0)
             GridLayoutManager(requireContext(), 2)
@@ -102,14 +107,14 @@ class RssArticlesFragment() : VMBaseFragment<RssArticlesViewModel>(R.layout.frag
 
     private fun loadArticles() {
         activityViewModel.rssSource?.let {
-            viewModel.loadContent(it)
+            viewModel.loadArticles(it)
         }
     }
 
-    private fun scrollToBottom() {
+    private fun scrollToBottom(forceLoad: Boolean = false) {
         if (viewModel.isLoading) return
-        if (loadMoreView.hasMore && adapter.getActualItemCount() > 0) {
-            loadMoreView.startLoad()
+        if ((loadMoreView.hasMore && adapter.getActualItemCount() > 0) || forceLoad) {
+            loadMoreView.hasMore()
             activityViewModel.rssSource?.let {
                 viewModel.loadMore(it)
             }
@@ -117,11 +122,12 @@ class RssArticlesFragment() : VMBaseFragment<RssArticlesViewModel>(R.layout.frag
     }
 
     override fun observeLiveBus() {
-        viewModel.loadFinally.observe(viewLifecycleOwner) {
+        viewModel.loadErrorLiveData.observe(viewLifecycleOwner) {
+            loadMoreView.error(it)
+        }
+        viewModel.loadFinallyLiveData.observe(viewLifecycleOwner) { hasMore ->
             binding.refreshLayout.isRefreshing = false
-            if (it) {
-                loadMoreView.startLoad()
-            } else {
+            if (!hasMore) {
                 loadMoreView.noMore()
             }
         }

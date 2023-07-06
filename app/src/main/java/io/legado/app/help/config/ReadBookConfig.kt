@@ -9,11 +9,28 @@ import io.legado.app.R
 import io.legado.app.constant.AppLog
 import io.legado.app.constant.PageAnim
 import io.legado.app.constant.PreferKey
-import io.legado.app.exception.NoStackTraceException
 import io.legado.app.help.DefaultData
 import io.legado.app.help.coroutine.Coroutine
 import io.legado.app.ui.book.read.page.provider.ChapterProvider
-import io.legado.app.utils.*
+import io.legado.app.utils.BitmapUtils
+import io.legado.app.utils.FileUtils
+import io.legado.app.utils.GSON
+import io.legado.app.utils.compress.ZipUtils
+import io.legado.app.utils.createFolderReplace
+import io.legado.app.utils.externalCache
+import io.legado.app.utils.externalFiles
+import io.legado.app.utils.fromJsonArray
+import io.legado.app.utils.fromJsonObject
+import io.legado.app.utils.getCompatColor
+import io.legado.app.utils.getFile
+import io.legado.app.utils.getMeanColor
+import io.legado.app.utils.getPrefBoolean
+import io.legado.app.utils.getPrefInt
+import io.legado.app.utils.hexString
+import io.legado.app.utils.printOnDebug
+import io.legado.app.utils.putPrefBoolean
+import io.legado.app.utils.putPrefInt
+import io.legado.app.utils.resizeAndRecycle
 import kotlinx.coroutines.Dispatchers.IO
 import kotlinx.coroutines.withContext
 import splitties.init.appCtx
@@ -37,7 +54,6 @@ object ReadBookConfig {
             if (shareLayout) {
                 shareConfig = value
             }
-            upBg()
         }
 
     var bg: Drawable? = null
@@ -88,18 +104,16 @@ object ReadBookConfig {
         shareConfig = c ?: configList.getOrNull(5) ?: Config()
     }
 
-    fun upBg() {
-        val resources = appCtx.resources
-        val dm = resources.displayMetrics
-        val width = dm.widthPixels
-        val height = dm.heightPixels
-        bg = durConfig.curBgDrawable(width, height).apply {
-            if (this is BitmapDrawable) {
-                bgMeanColor = bitmap.getMeanColor()
-            } else if (this is ColorDrawable) {
-                bgMeanColor = color
-            }
+    fun upBg(width: Int, height: Int) {
+        val drawable = durConfig.curBgDrawable(width, height)
+        if (drawable is BitmapDrawable && drawable.bitmap != null) {
+            bgMeanColor = drawable.bitmap.getMeanColor()
+        } else if (drawable is ColorDrawable) {
+            bgMeanColor = drawable.color
         }
+        val tmp = bg
+        bg = drawable
+        (tmp as? BitmapDrawable)?.bitmap?.recycle()
     }
 
     fun save() {
@@ -123,7 +137,6 @@ object ReadBookConfig {
             if (styleSelect > 0) {
                 styleSelect -= 1
             }
-            upBg()
             return true
         }
         return false
@@ -158,7 +171,15 @@ object ReadBookConfig {
                 appCtx.putPrefBoolean(PreferKey.shareLayout, value)
             }
         }
+
+    /**
+     * 两端对齐
+     */
     val textFullJustify get() = appCtx.getPrefBoolean(PreferKey.textFullJustify, true)
+
+    /**
+     * 底部对齐
+     */
     val textBottomJustify get() = appCtx.getPrefBoolean(PreferKey.textBottomJustify, true)
     var hideStatusBar = appCtx.getPrefBoolean(PreferKey.hideStatusBar)
     var hideNavigationBar = appCtx.getPrefBoolean(PreferKey.hideNavigationBar)
@@ -214,6 +235,9 @@ object ReadBookConfig {
             config.paragraphSpacing = value
         }
 
+    /**
+     * 标题位置 0:居左 1:居中 2:隐藏
+     */
     var titleMode: Int
         get() = config.titleMode
         set(value) {
@@ -224,6 +248,11 @@ object ReadBookConfig {
         set(value) {
             config.titleSize = value
         }
+
+    /**
+     * 是否标题居中
+     */
+    val isMiddleTitle get() = titleMode == 1
 
     var titleTopSpacing: Int
         get() = config.titleTopSpacing
@@ -241,6 +270,12 @@ object ReadBookConfig {
         get() = config.paragraphIndent
         set(value) {
             config.paragraphIndent = value
+        }
+
+    var underline: Boolean
+        get() = config.underline
+        set(value) {
+            config.underline = value
         }
 
     var paddingBottom: Int
@@ -374,14 +409,11 @@ object ReadBookConfig {
                 FileUtils.delete(configZipPath)
                 val zipFile = FileUtils.createFileIfNotExist(configZipPath)
                 zipFile.writeBytes(byteArray)
-                val configDirPath = FileUtils.getPath(appCtx.externalCache, "readConfig")
-                FileUtils.delete(configDirPath)
-                @Suppress("BlockingMethodInNonBlockingContext")
-                ZipUtils.unzipFile(zipFile, FileUtils.createFolderIfNotExist(configDirPath))
-                val configDir = FileUtils.createFolderIfNotExist(configDirPath)
+                val configDir = appCtx.externalCache.getFile("readConfig")
+                configDir.createFolderReplace()
+                ZipUtils.unZipToPath(zipFile, configDir)
                 val configFile = configDir.getFile(configFileName)
                 val config: Config = GSON.fromJsonObject<Config>(configFile.readText()).getOrThrow()
-                    ?: throw NoStackTraceException("排版配置格式错误")
                 if (config.textFont.isNotEmpty()) {
                     val fontName = FileUtils.getName(config.textFont)
                     val fontPath =
@@ -438,14 +470,14 @@ object ReadBookConfig {
         var bgAlpha: Int = 100,//背景透明度
         var bgType: Int = 0,//白天背景类型 0:颜色, 1:assets图片, 2其它图片
         var bgTypeNight: Int = 0,//夜间背景类型
-        var bgTypeEInk: Int = 0,
+        var bgTypeEInk: Int = 0,//EInk背景类型
         private var darkStatusIcon: Boolean = true,//白天是否暗色状态栏
         private var darkStatusIconNight: Boolean = false,//晚上是否暗色状态栏
         private var darkStatusIconEInk: Boolean = true,
         private var textColor: String = "#3E3D3B",//白天文字颜色
         private var textColorNight: String = "#ADADAD",//夜间文字颜色
         private var textColorEInk: String = "#000000",
-        private var pageAnim: Int = 0,
+        private var pageAnim: Int = 0,//翻页动画
         private var pageAnimEInk: Int = 3,
         var textFont: String = "",//字体
         var textBold: Int = 0,//是否粗体字 0:正常, 1:粗体, 2:细体
@@ -453,11 +485,12 @@ object ReadBookConfig {
         var letterSpacing: Float = 0.1f,//字间距
         var lineSpacingExtra: Int = 12,//行间距
         var paragraphSpacing: Int = 2,//段距
-        var titleMode: Int = 0,//标题居中
+        var titleMode: Int = 0,//标题位置 0:居左 1:居中 2:隐藏
         var titleSize: Int = 0,
         var titleTopSpacing: Int = 0,
         var titleBottomSpacing: Int = 0,
         var paragraphIndent: String = "　　",//段落缩进
+        var underline: Boolean = false, //下划线
         var paddingBottom: Int = 6,
         var paddingLeft: Int = 16,
         var paddingRight: Int = 16,
@@ -479,6 +512,7 @@ object ReadBookConfig {
         var tipFooterMiddle: Int = ReadTipConfig.none,
         var tipFooterRight: Int = ReadTipConfig.pageAndTotal,
         var tipColor: Int = 0,
+        var tipDividerColor: Int = -1,
         var headerMode: Int = 0,
         var footerMode: Int = 0
     ) {
@@ -564,26 +598,23 @@ object ReadBookConfig {
         }
 
         fun curBgDrawable(width: Int, height: Int): Drawable {
+            if (width == 0 || height == 0) {
+                return ColorDrawable(appCtx.getCompatColor(R.color.background))
+            }
             var bgDrawable: Drawable? = null
             val resources = appCtx.resources
             try {
                 bgDrawable = when (curBgType()) {
                     0 -> ColorDrawable(Color.parseColor(curBgStr()))
                     1 -> {
-                        BitmapDrawable(
-                            resources,
-                            BitmapUtils.decodeAssetsBitmap(
-                                appCtx,
-                                "bg" + File.separator + curBgStr(),
-                                width,
-                                height
-                            )
-                        )
+                        val path = "bg" + File.separator + curBgStr()
+                        val bitmap = BitmapUtils.decodeAssetsBitmap(appCtx, path, width, height)
+                        BitmapDrawable(resources, bitmap?.resizeAndRecycle(width, height))
                     }
-                    else -> BitmapDrawable(
-                        resources,
-                        BitmapUtils.decodeBitmap(curBgStr(), width, height)
-                    )
+                    else -> {
+                        val bitmap = BitmapUtils.decodeBitmap(curBgStr(), width, height)
+                        BitmapDrawable(resources, bitmap?.resizeAndRecycle(width, height))
+                    }
                 }
             } catch (e: OutOfMemoryError) {
                 e.printOnDebug()
