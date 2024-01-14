@@ -14,13 +14,17 @@ import io.legado.app.help.config.ReadBookConfig
 import io.legado.app.help.config.ReadTipConfig
 import io.legado.app.model.ReadBook
 import io.legado.app.ui.book.read.ReadBookActivity
+import io.legado.app.ui.book.read.page.entities.TextLine
 import io.legado.app.ui.book.read.page.entities.TextPage
 import io.legado.app.ui.book.read.page.entities.TextPos
 import io.legado.app.ui.book.read.page.provider.ChapterProvider
 import io.legado.app.ui.widget.BatteryView
-import io.legado.app.utils.*
+import io.legado.app.utils.activity
+import io.legado.app.utils.dpToPx
+import io.legado.app.utils.gone
+import io.legado.app.utils.statusBarHeight
 import splitties.views.backgroundColor
-import java.util.*
+import java.util.Date
 
 /**
  * 页面视图
@@ -298,11 +302,29 @@ class PageView(context: Context) : FrameLayout(context) {
      */
     @SuppressLint("SetTextI18n")
     fun setProgress(textPage: TextPage) = textPage.apply {
-        tvBookName?.text = ReadBook.book?.name
-        tvTitle?.text = textPage.title
+        tvBookName?.apply {
+            if (text != ReadBook.book?.name) {
+                text = ReadBook.book?.name
+            }
+        }
+        tvTitle?.apply {
+            if (text != textPage.title) {
+                text = textPage.title
+            }
+        }
         tvPage?.text = "${index.plus(1)}/$pageSize"
-        tvTotalProgress?.text = readProgress
-        tvTotalProgress1?.text = "${textPage.chapterIndex.plus(1)}/${textPage.chapterSize}"
+        val readProgress = readProgress
+        tvTotalProgress?.apply {
+            if (text != readProgress) {
+                text = readProgress
+            }
+        }
+        tvTotalProgress1?.apply {
+            val progress = "${chapterIndex.plus(1)}/${chapterSize}"
+            if (text != progress) {
+                text = progress
+            }
+        }
         tvPageAndTotal?.text = "${index.plus(1)}/$pageSize  $readProgress"
     }
 
@@ -352,6 +374,10 @@ class PageView(context: Context) : FrameLayout(context) {
         return binding.contentTextView.getCurVisiblePage()
     }
 
+    fun getCurVisibleFirstLine(): TextLine? {
+        return binding.contentTextView.getCurVisibleFirstLine()
+    }
+
     fun markAsMainView() {
         binding.contentTextView.isMainView = true
     }
@@ -360,16 +386,60 @@ class PageView(context: Context) : FrameLayout(context) {
         binding.contentTextView.selectStartMove(x, y - headerHeight)
     }
 
-    fun selectStartMoveIndex(relativePagePos: Int, lineIndex: Int, charIndex: Int) {
-        binding.contentTextView.selectStartMoveIndex(relativePagePos, lineIndex, charIndex)
+    fun selectStartMoveIndex(
+        relativePagePos: Int,
+        lineIndex: Int,
+        charIndex: Int,
+        isTouch: Boolean = true,
+        isLast: Boolean = false
+    ) {
+        binding.contentTextView.selectStartMoveIndex(
+            relativePagePos,
+            lineIndex,
+            charIndex,
+            isTouch,
+            isLast
+        )
+    }
+
+    fun selectStartMoveIndex(textPos: TextPos) {
+        binding.contentTextView.selectStartMoveIndex(textPos)
     }
 
     fun selectEndMove(x: Float, y: Float) {
         binding.contentTextView.selectEndMove(x, y - headerHeight)
     }
 
-    fun selectEndMoveIndex(relativePagePos: Int, lineIndex: Int, charIndex: Int) {
-        binding.contentTextView.selectEndMoveIndex(relativePagePos, lineIndex, charIndex)
+    fun selectEndMoveIndex(
+        relativePagePos: Int,
+        lineIndex: Int,
+        charIndex: Int,
+        isTouch: Boolean = true,
+        isLast: Boolean = false
+    ) {
+        binding.contentTextView.selectEndMoveIndex(
+            relativePagePos,
+            lineIndex,
+            charIndex,
+            isTouch,
+            isLast
+        )
+    }
+
+    fun selectEndMoveIndex(textPos: TextPos) {
+        binding.contentTextView.selectEndMoveIndex(textPos)
+    }
+
+    fun getReverseStartCursor(): Boolean {
+        return binding.contentTextView.reverseStartCursor
+    }
+
+    fun getReverseEndCursor(): Boolean {
+        return binding.contentTextView.reverseEndCursor
+    }
+
+    fun resetReverseCursor() {
+        binding.contentTextView.resetReverseCursor()
     }
 
     fun cancelSelect(clearSearchResult: Boolean = false) {

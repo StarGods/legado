@@ -1,9 +1,6 @@
 package io.legado.app.utils
 
-import io.legado.app.constant.AppLog
 import io.legado.app.model.analyzeRule.AnalyzeUrl
-import org.apache.commons.text.StringEscapeUtils
-import org.jsoup.nodes.Entities
 import java.net.URL
 import java.util.regex.Pattern
 
@@ -17,9 +14,12 @@ object HtmlFormatter {
     private val notImgHtmlRegex = "</?(?!img)[a-zA-Z]+(?=[ >])[^<>]*>".toRegex()
     private val otherHtmlRegex = "</?[a-zA-Z]+(?=[ >])[^<>]*>".toRegex()
     private val formatImagePattern = Pattern.compile(
-        "<img[^>]*src *= *\"([^\"{>]*\\{(?:[^{}]|\\{[^}>]+\\})+\\})\"[^>]*>|<img[^>]*data-[^=>]*= *\"([^\">]*)\"[^>]*>|<img[^>]*src *= *\"([^\">]*)\"[^>]*>",
+        "<img[^>]*\\ssrc\\s*=\\s*\"([^\"{>]*\\{(?:[^{}]|\\{[^}>]+\\})+\\})\"[^>]*>|<img[^>]*\\sdata-[^=>]*=\\s*\"([^\">]*)\"[^>]*>|<img[^>]*\\ssrc\\s*=\\s*\"([^\">]*)\"[^>]*>",
         Pattern.CASE_INSENSITIVE
     )
+    private val indent1Regex = "\\s*\\n+\\s*".toRegex()
+    private val indent2Regex = "^[\\n\\s]+".toRegex()
+    private val lastRegex = "[\\n\\s]+$".toRegex()
 
     fun format(html: String?, otherRegex: Regex = otherHtmlRegex): String {
         html ?: return ""
@@ -29,9 +29,9 @@ object HtmlFormatter {
             .replace(wrapHtmlRegex, "\n")
             .replace(commentRegex, "")
             .replace(otherRegex, "")
-            .replace("\\s*\\n+\\s*".toRegex(), "\n　　")
-            .replace("^[\\n\\s]+".toRegex(), "　　")
-            .replace("[\\n\\s]+$".toRegex(), "")
+            .replace(indent1Regex, "\n　　")
+            .replace(indent2Regex, "　　")
+            .replace(lastRegex, "")
     }
 
     fun formatKeepImg(html: String?, redirectUrl: URL? = null): String {

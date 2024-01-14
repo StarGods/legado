@@ -1,5 +1,6 @@
 package io.legado.app.constant
 
+@Suppress("ConstPropertyName")
 object IntentAction {
     const val start = "start"
     const val play = "play"
@@ -11,6 +12,7 @@ object IntentAction {
     const val prevParagraph = "prevParagraph"
     const val nextParagraph = "nextParagraph"
     const val upTtsSpeechRate = "upTtsSpeechRate"
+    const val upTtsProgress = "upTtsProgress"
     const val adjustProgress = "adjustProgress"
     const val adjustSpeed = "adjustSpeed"
     const val prev = "prev"

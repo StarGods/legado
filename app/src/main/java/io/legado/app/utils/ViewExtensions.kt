@@ -6,13 +6,21 @@ import android.annotation.SuppressLint
 import android.content.Context
 import android.graphics.Bitmap
 import android.graphics.Canvas
+import android.graphics.Color
 import android.os.Build
 import android.text.Html
 import android.view.MotionEvent
 import android.view.View
-import android.view.View.*
+import android.view.View.GONE
+import android.view.View.IMPORTANT_FOR_AUTOFILL_NO_EXCLUDE_DESCENDANTS
+import android.view.View.INVISIBLE
+import android.view.View.VISIBLE
 import android.view.inputmethod.InputMethodManager
-import android.widget.*
+import android.widget.EdgeEffect
+import android.widget.EditText
+import android.widget.RadioGroup
+import android.widget.SeekBar
+import android.widget.TextView
 import androidx.annotation.ColorInt
 import androidx.appcompat.app.AppCompatActivity
 import androidx.appcompat.view.menu.MenuPopupHelper
@@ -23,7 +31,6 @@ import androidx.viewpager.widget.ViewPager
 import io.legado.app.help.config.AppConfig
 import io.legado.app.lib.theme.TintHelper
 import splitties.systemservices.inputMethodManager
-
 import java.lang.reflect.Field
 
 
@@ -56,7 +63,7 @@ fun View.disableAutoFill() = run {
 
 fun View.applyTint(
     @ColorInt color: Int,
-    isDark: Boolean = AppConfig.isNightTheme(context)
+    isDark: Boolean = AppConfig.isNightTheme
 ) {
     TintHelper.setTintAuto(this, color, false, isDark)
 }
@@ -133,12 +140,21 @@ fun View.visible(visible: Boolean) {
     }
 }
 
-fun View.screenshot(): Bitmap? {
+fun View.screenshot(bitmap: Bitmap? = null, canvas: Canvas? = null): Bitmap? {
     return if (width > 0 && height > 0) {
-        val screenshot = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
-        val c = Canvas(screenshot)
+        val screenshot = if (bitmap != null && bitmap.width == width && bitmap.height == height) {
+            bitmap.eraseColor(Color.TRANSPARENT)
+            bitmap
+        } else {
+            bitmap?.recycle()
+            Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
+        }
+        val c = canvas ?: Canvas()
+        c.setBitmap(screenshot)
+        c.save()
         c.translate(-scrollX.toFloat(), -scrollY.toFloat())
         this.draw(c)
+        c.restore()
         c.setBitmap(null)
         screenshot.prepareToDraw()
         screenshot

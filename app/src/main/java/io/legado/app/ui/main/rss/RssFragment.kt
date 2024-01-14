@@ -7,6 +7,7 @@ import android.view.SubMenu
 import android.view.View
 import androidx.appcompat.widget.SearchView
 import androidx.fragment.app.viewModels
+import androidx.lifecycle.lifecycleScope
 import io.legado.app.R
 import io.legado.app.base.VMBaseFragment
 import io.legado.app.constant.AppLog
@@ -24,7 +25,6 @@ import io.legado.app.ui.rss.favorites.RssFavoritesActivity
 import io.legado.app.ui.rss.read.ReadRssActivity
 import io.legado.app.ui.rss.source.edit.RssSourceEditActivity
 import io.legado.app.ui.rss.source.manage.RssSourceActivity
-import io.legado.app.ui.rss.source.manage.RssSourceViewModel
 import io.legado.app.ui.rss.subscription.RuleSubActivity
 import io.legado.app.utils.applyTint
 import io.legado.app.utils.cnCompare
@@ -42,7 +42,7 @@ import kotlinx.coroutines.launch
 /**
  * 订阅界面
  */
-class RssFragment() : VMBaseFragment<RssSourceViewModel>(R.layout.fragment_rss),
+class RssFragment() : VMBaseFragment<RssViewModel>(R.layout.fragment_rss),
     MainFragmentInterface,
     RssAdapter.CallBack {
 
@@ -55,7 +55,7 @@ class RssFragment() : VMBaseFragment<RssSourceViewModel>(R.layout.fragment_rss),
     override val position: Int? get() = arguments?.getInt("position")
 
     private val binding by viewBinding(FragmentRssBinding::bind)
-    override val viewModel by viewModels<RssSourceViewModel>()
+    override val viewModel by viewModels<RssViewModel>()
     private val adapter by lazy { RssAdapter(requireContext(), this) }
     private val searchView: SearchView by lazy {
         binding.titleBar.findViewById(R.id.search_view)
@@ -85,7 +85,7 @@ class RssFragment() : VMBaseFragment<RssSourceViewModel>(R.layout.fragment_rss),
             R.id.menu_rss_config -> startActivity<RssSourceActivity>()
             R.id.menu_rss_star -> startActivity<RssFavoritesActivity>()
             else -> if (item.groupId == R.id.menu_group_text) {
-                searchView.setQuery(item.title, true)
+                searchView.setQuery("group:${item.title}", true)
             }
         }
     }
@@ -109,7 +109,9 @@ class RssFragment() : VMBaseFragment<RssSourceViewModel>(R.layout.fragment_rss),
         searchView.onActionViewExpanded()
         searchView.isSubmitButtonEnabled = true
         searchView.queryHint = getString(R.string.rss)
-        searchView.clearFocus()
+        searchView.post {
+            searchView.clearFocus()
+        }
         searchView.setOnQueryTextListener(object : SearchView.OnQueryTextListener {
             override fun onQueryTextSubmit(query: String?): Boolean {
                 return false
@@ -138,7 +140,7 @@ class RssFragment() : VMBaseFragment<RssSourceViewModel>(R.layout.fragment_rss),
 
     private fun initGroupData() {
         groupsFlowJob?.cancel()
-        groupsFlowJob = launch {
+        groupsFlowJob = lifecycleScope.launch {
             appDb.rssSourceDao.flowGroupEnabled().conflate().collect {
                 groups.clear()
                 it.map { group ->
@@ -151,13 +153,14 @@ class RssFragment() : VMBaseFragment<RssSourceViewModel>(R.layout.fragment_rss),
 
     private fun upRssFlowJob(searchKey: String? = null) {
         rssFlowJob?.cancel()
-        rssFlowJob = launch {
+        rssFlowJob = lifecycleScope.launch {
             when {
                 searchKey.isNullOrEmpty() -> appDb.rssSourceDao.flowEnabled()
                 searchKey.startsWith("group:") -> {
                     val key = searchKey.substringAfter("group:")
                     appDb.rssSourceDao.flowEnabledByGroup(key)
                 }
+
                 else -> appDb.rssSourceDao.flowEnabled(searchKey)
             }.catch {
                 AppLog.put("订阅界面更新数据出错", it)
@@ -169,13 +172,15 @@ class RssFragment() : VMBaseFragment<RssSourceViewModel>(R.layout.fragment_rss),
 
     override fun openRss(rssSource: RssSource) {
         if (rssSource.singleUrl) {
-            if (rssSource.sourceUrl.startsWith("http", true)) {
-                startActivity<ReadRssActivity> {
-                    putExtra("title", rssSource.sourceName)
-                    putExtra("origin", rssSource.sourceUrl)
+            viewModel.getSingleUrl(rssSource) { url ->
+                if (url.startsWith("http", true)) {
+                    startActivity<ReadRssActivity> {
+                        putExtra("title", rssSource.sourceName)
+                        putExtra("origin", url)
+                    }
+                } else {
+                    context?.openUrl(url)
                 }
-            } else {
-                context?.openUrl(rssSource.sourceUrl)
             }
         } else {
             startActivity<RssSortActivity> {

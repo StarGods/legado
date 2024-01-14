@@ -42,7 +42,7 @@ class ReadMenu @JvmOverloads constructor(
     context: Context,
     attrs: AttributeSet? = null
 ) : FrameLayout(context, attrs) {
-    var cnaShowMenu: Boolean = false
+    var canShowMenu: Boolean = false
     private val callBack: CallBack get() = activity as CallBack
     private val binding = ViewReadMenuBinding.inflate(LayoutInflater.from(context), this, true)
     private var confirmSkipToChapter: Boolean = false
@@ -61,7 +61,9 @@ class ReadMenu @JvmOverloads constructor(
     private val immersiveMenu: Boolean
         get() = AppConfig.readBarStyleFollowPage && ReadBookConfig.durConfig.curBgType() == 0
     private var bgColor: Int = if (immersiveMenu) {
-        Color.parseColor(ReadBookConfig.durConfig.curBgStr())
+        kotlin.runCatching {
+            Color.parseColor(ReadBookConfig.durConfig.curBgStr())
+        }.getOrDefault(context.bottomBackground)
     } else {
         context.bottomBackground
     }
@@ -138,7 +140,7 @@ class ReadMenu @JvmOverloads constructor(
             this@ReadMenu.invisible()
             binding.titleBar.invisible()
             binding.bottomMenu.invisible()
-            cnaShowMenu = false
+            canShowMenu = false
             onMenuOutEnd?.invoke()
             callBack.upSystemUiVisibility()
         }
@@ -198,6 +200,7 @@ class ReadMenu @JvmOverloads constructor(
         tvFont.setTextColor(textColor)
         ivSetting.setColorFilter(textColor, PorterDuff.Mode.SRC_IN)
         tvSetting.setTextColor(textColor)
+        vwBrightnessPosAdjust.setColorFilter(textColor, PorterDuff.Mode.SRC_IN)
         vwBg.setOnClickListener(null)
         llBrightness.setOnClickListener(null)
         seekBrightness.post {
@@ -224,7 +227,9 @@ class ReadMenu @JvmOverloads constructor(
 
     private fun upColorConfig() {
         bgColor = if (immersiveMenu) {
-            Color.parseColor(ReadBookConfig.durConfig.curBgStr())
+            kotlin.runCatching {
+                Color.parseColor(ReadBookConfig.durConfig.curBgStr())
+            }.getOrDefault(context.bottomBackground)
         } else {
             context.bottomBackground
         }
@@ -298,6 +303,7 @@ class ReadMenu @JvmOverloads constructor(
     }
 
     private fun bindEvent() = binding.run {
+        vwMenuBg.setOnClickListener { runMenuOut() }
         titleBar.toolbar.setOnClickListener {
             ReadBook.book?.let {
                 context.startActivity<BookInfoActivity> {

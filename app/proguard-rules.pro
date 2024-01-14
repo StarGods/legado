@@ -146,6 +146,8 @@
 }
 
 # 保持js引擎调用的java类
+-keep class * extends io.legado.app.help.JsExtensions{*;}
+# 保持js引擎调用的java类
 -keep class **.analyzeRule.**{*;}
 # 保持web类
 -keep class **.web.**{*;}
@@ -248,8 +250,8 @@
 ## 对外提供api
 -keep class io.legado.app.api.ReturnData{*;}
 
-# Apache Commons Compress
--keep class org.apache.commons.compress.archivers.** {*;}
+# 繁简转换
+-keep class com.github.liuyueyi.quick.transfer.** {*;}
 
 
 #-------------------Cronet------------------------------------

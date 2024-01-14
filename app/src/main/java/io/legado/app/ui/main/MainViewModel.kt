@@ -26,13 +26,12 @@ import io.legado.app.model.ReadBook
 import io.legado.app.model.webBook.WebBook
 import io.legado.app.service.CacheBookService
 import io.legado.app.utils.postEvent
-import kotlinx.coroutines.Dispatchers.IO
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.asCoroutineDispatcher
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
-import java.util.concurrent.CopyOnWriteArraySet
+import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.Executors
 import kotlin.math.min
 
@@ -41,7 +40,7 @@ class MainViewModel(application: Application) : BaseViewModel(application) {
     private var upTocPool =
         Executors.newFixedThreadPool(min(threadCount, AppConst.MAX_THREAD)).asCoroutineDispatcher()
     private val waitUpTocBooks = arrayListOf<String>()
-    private val onUpTocBooks = CopyOnWriteArraySet<String>()
+    private val onUpTocBooks = ConcurrentHashMap.newKeySet<String>()
     val onUpBooksLiveData = MutableLiveData<Int>()
     private var upTocJob: Job? = null
     private var cacheBookJob: Job? = null
@@ -138,7 +137,7 @@ class MainViewModel(application: Application) : BaseViewModel(application) {
         }
         waitUpTocBooks.remove(bookUrl)
         upTocAdd(bookUrl)
-        execute(context = upTocPool, executeContext = IO) {
+        execute(context = upTocPool, executeContext = upTocPool) {
             kotlin.runCatching {
                 val oldBook = book.copy()
                 WebBook.runPreUpdateJs(source, book)
@@ -157,7 +156,7 @@ class MainViewModel(application: Application) : BaseViewModel(application) {
                 }
                 appDb.bookChapterDao.delByBook(bookUrl)
                 appDb.bookChapterDao.insert(*toc.toTypedArray())
-                if (book.isSameNameAuthor(ReadBook)) {
+                if (book.isSameNameAuthor(ReadBook.book)) {
                     ReadBook.book = book
                     ReadBook.chapterSize = book.totalChapterNum
                 }
@@ -170,10 +169,10 @@ class MainViewModel(application: Application) : BaseViewModel(application) {
                     appDb.bookDao.update(book)
                 }
             }
-        }.onCancel(upTocPool) {
+        }.onCancel {
             upTocCancel(bookUrl)
             upTocCancel(book.bookUrl)
-        }.onFinally(upTocPool) {
+        }.onFinally {
             upTocFinally(bookUrl)
             upTocFinally(book.bookUrl)
             postUpBooksLiveData()

@@ -1,5 +1,6 @@
 package io.legado.app.constant
 
+@Suppress("ConstPropertyName")
 object PreferKey {
     const val language = "language"
     const val fontScale = "fontScale"
@@ -39,6 +40,7 @@ object PreferKey {
     const val bookshelfSort = "bookshelfSort"
     const val bookExportFileName = "bookExportFileName"
     const val bookImportFileName = "bookImportFileName"
+    const val episodeExportFileName = "episodeExportFileName"
     const val recordLog = "recordLog"
     const val processText = "process_text"
     const val cleanCache = "cleanCache"
@@ -132,6 +134,16 @@ object PreferKey {
     const val onlyLatestBackup = "onlyLatestBackup"
     const val brightnessVwPos = "brightnessVwPos"
     const val shrinkDatabase = "shrinkDatabase"
+    const val batchChangeSourceDelay = "batchChangeSourceDelay"
+    const val openBookInfoByClickTitle = "openBookInfoByClickTitle"
+    const val defaultHomePage = "defaultHomePage"
+    const val showBookshelfFastScroller = "showBookshelfFastScroller"
+    const val importKeepEnable = "importKeepEnable"
+    const val previewImageByClick = "previewImageByClick"
+    const val keyPageOnLongPress = "keyPageOnLongPress"
+    const val volumeKeyPage = "volumeKeyPage"
+    const val volumeKeyPageOnPlay = "volumeKeyPageOnPlay"
+    const val mouseWheelPage = "mouseWheelPage"
 
     const val cPrimary = "colorPrimary"
     const val cAccent = "colorAccent"

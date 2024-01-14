@@ -1,12 +1,22 @@
 package io.legado.app.data.entities
 
 import android.os.Parcelable
-import androidx.room.*
+import androidx.room.ColumnInfo
+import androidx.room.Entity
+import androidx.room.Ignore
+import androidx.room.Index
+import androidx.room.PrimaryKey
+import androidx.room.TypeConverter
+import androidx.room.TypeConverters
 import io.legado.app.constant.AppPattern
 import io.legado.app.constant.BookType
 import io.legado.app.constant.PageAnim
 import io.legado.app.data.appDb
-import io.legado.app.help.book.*
+import io.legado.app.help.book.BookHelp
+import io.legado.app.help.book.ContentProcessor
+import io.legado.app.help.book.isEpub
+import io.legado.app.help.book.isImage
+import io.legado.app.help.book.isPdf
 import io.legado.app.help.config.AppConfig
 import io.legado.app.help.config.ReadBookConfig
 import io.legado.app.model.ReadBook
@@ -90,6 +100,7 @@ data class Book(
     // 最近一次阅读书籍的时间(打开正文的时间)
     @ColumnInfo(defaultValue = "0")
     var durChapterTime: Long = System.currentTimeMillis(),
+    //字数
     override var wordCount: String? = null,
     // 刷新书架时更新书籍信息
     @ColumnInfo(defaultValue = "1")
@@ -102,7 +113,11 @@ data class Book(
     var originOrder: Int = 0,
     // 自定义书籍变量信息(用于书源规则检索书籍信息)
     override var variable: String? = null,
-    var readConfig: ReadConfig? = null
+    //阅读设置
+    var readConfig: ReadConfig? = null,
+    //同步时间
+    @ColumnInfo(defaultValue = "0")
+    var syncTime: Long = 0L
 ) : Parcelable, BaseBook {
 
     override fun equals(other: Any?): Boolean {
@@ -138,6 +153,10 @@ data class Book(
     @Ignore
     @IgnoredOnParcel
     private var folderName: String? = null
+
+    @get:Ignore
+    @IgnoredOnParcel
+    val lastChapterIndex get() = totalChapterNum - 1
 
     fun getRealAuthor() = author.replace(AppPattern.authorRegex, "")
 
@@ -240,6 +259,14 @@ data class Book(
         return config.delTag and tag == tag
     }
 
+    fun addDelTag(tag: Long) {
+        config.delTag = config.delTag and tag
+    }
+
+    fun removeDelTag(tag: Long) {
+        config.delTag = config.delTag and tag.inv()
+    }
+
     fun getFolderName(): String {
         folderName?.let {
             return it
@@ -318,6 +345,7 @@ data class Book(
         appDb.bookDao.delete(this)
     }
 
+    @Suppress("ConstPropertyName")
     companion object {
         const val hTag = 2L
         const val rubyTag = 4L

@@ -69,6 +69,7 @@ const gotoChapter = (note) => {
   currentChapterIndex.value = chapterIndex;
   store.setPopCataVisible(false);
   store.setContentLoading(true);
+  store.saveBookProgress();
   emit("getContent", chapterIndex);
 };
 
@@ -106,8 +107,12 @@ onUpdated(() => {
       //width: 50%;
       height: 40px;
       cursor: pointer;
-      font: 16px / 40px PingFangSC-Regular, HelveticaNeue-Light,
-        "Helvetica Neue Light", "Microsoft YaHei", sans-serif;
+      font:
+        16px / 40px PingFangSC-Regular,
+        HelveticaNeue-Light,
+        "Helvetica Neue Light",
+        "Microsoft YaHei",
+        sans-serif;
     }
   }
 

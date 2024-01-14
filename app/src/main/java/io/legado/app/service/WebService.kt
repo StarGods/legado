@@ -3,6 +3,7 @@ package io.legado.app.service
 import android.annotation.SuppressLint
 import android.content.Context
 import android.content.Intent
+import android.net.wifi.WifiManager
 import android.os.Build
 import android.os.PowerManager
 import androidx.core.app.NotificationCompat
@@ -11,6 +12,7 @@ import io.legado.app.base.BaseService
 import io.legado.app.constant.AppConst
 import io.legado.app.constant.EventBus
 import io.legado.app.constant.IntentAction
+import io.legado.app.constant.NotificationId
 import io.legado.app.constant.PreferKey
 import io.legado.app.receiver.NetworkChangedListener
 import io.legado.app.utils.*
@@ -18,6 +20,7 @@ import io.legado.app.web.HttpServer
 import io.legado.app.web.WebSocketServer
 import splitties.init.appCtx
 import splitties.systemservices.powerManager
+import splitties.systemservices.wifiManager
 import java.io.IOException
 
 class WebService : BaseService() {
@@ -48,6 +51,13 @@ class WebService : BaseService() {
                 setReferenceCounted(false)
             }
     }
+    private val wifiLock by lazy {
+        @Suppress("DEPRECATION")
+        wifiManager?.createWifiLock(WifiManager.WIFI_MODE_FULL_HIGH_PERF, "legado:AudioPlayService")
+            ?.apply {
+                setReferenceCounted(false)
+            }
+    }
     private var httpServer: HttpServer? = null
     private var webSocketServer: WebSocketServer? = null
     private var notificationContent = appCtx.getString(R.string.service_starting)
@@ -55,9 +65,13 @@ class WebService : BaseService() {
         NetworkChangedListener(this)
     }
 
+    @SuppressLint("WakelockTimeout")
     override fun onCreate() {
         super.onCreate()
-        if (useWakeLock) wakeLock.acquire(10 * 60 * 1000L /*10 minutes*/)
+        if (useWakeLock) {
+            wakeLock.acquire()
+            wifiLock?.acquire()
+        }
         isRun = true
         upTile(true)
         networkChangedListener.register()
@@ -76,11 +90,16 @@ class WebService : BaseService() {
         }
     }
 
+    @SuppressLint("WakelockTimeout")
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         when (intent?.action) {
             IntentAction.stop -> stopSelf()
             "copyHostAddress" -> sendToClip(hostAddress)
-            "serve" -> if (useWakeLock) wakeLock.acquire(10 * 60 * 1000L /*10 minutes*/)
+            "serve" -> if (useWakeLock) {
+                wakeLock.acquire()
+                wifiLock?.acquire()
+            }
+
             else -> upWebServer()
         }
         return super.onStartCommand(intent, flags, startId)
@@ -88,7 +107,10 @@ class WebService : BaseService() {
 
     override fun onDestroy() {
         super.onDestroy()
-        if (useWakeLock) wakeLock.release()
+        if (useWakeLock) {
+            wakeLock.release()
+            wifiLock?.release()
+        }
         networkChangedListener.unRegister()
         isRun = false
         if (httpServer?.isAlive == true) {
@@ -159,7 +181,7 @@ class WebService : BaseService() {
         )
         builder.setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
         val notification = builder.build()
-        startForeground(AppConst.notificationIdWeb, notification)
+        startForeground(NotificationId.WebService, notification)
     }
 
     @SuppressLint("ObsoleteSdkInt")

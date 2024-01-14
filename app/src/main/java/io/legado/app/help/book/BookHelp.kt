@@ -13,9 +13,25 @@ import io.legado.app.data.entities.BookSource
 import io.legado.app.exception.NoStackTraceException
 import io.legado.app.model.analyzeRule.AnalyzeUrl
 import io.legado.app.model.localBook.LocalBook
-import io.legado.app.utils.*
-import kotlinx.coroutines.*
+import io.legado.app.utils.ArchiveUtils
+import io.legado.app.utils.FileUtils
+import io.legado.app.utils.ImageUtils
+import io.legado.app.utils.MD5Utils
+import io.legado.app.utils.NetworkUtils
+import io.legado.app.utils.StringUtils
+import io.legado.app.utils.SvgUtils
+import io.legado.app.utils.UrlUtil
+import io.legado.app.utils.exists
+import io.legado.app.utils.externalFiles
+import io.legado.app.utils.getFile
+import io.legado.app.utils.isContentScheme
+import io.legado.app.utils.postEvent
+import kotlinx.coroutines.Deferred
 import kotlinx.coroutines.Dispatchers.IO
+import kotlinx.coroutines.async
+import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.withContext
 import org.apache.commons.text.similarity.JaccardSimilarity
 import splitties.init.appCtx
 import java.io.ByteArrayInputStream
@@ -23,20 +39,20 @@ import java.io.File
 import java.io.FileNotFoundException
 import java.io.FileOutputStream
 import java.io.IOException
-import java.util.concurrent.CopyOnWriteArraySet
+import java.util.concurrent.ConcurrentHashMap
 import java.util.regex.Pattern
 import java.util.zip.ZipFile
 import kotlin.math.abs
 import kotlin.math.max
 import kotlin.math.min
 
-@Suppress("unused")
+@Suppress("unused", "ConstPropertyName")
 object BookHelp {
     private val downloadDir: File = appCtx.externalFiles
     private const val cacheFolderName = "book_cache"
     private const val cacheImageFolderName = "images"
     private const val cacheEpubFolderName = "epub"
-    private val downloadImages = CopyOnWriteArraySet<String>()
+    private val downloadImages = ConcurrentHashMap.newKeySet<String>()
 
     val cachePath = FileUtils.getPath(downloadDir, cacheFolderName)
 
@@ -73,8 +89,8 @@ object BookHelp {
      */
     suspend fun clearInvalidCache() {
         withContext(IO) {
-            val bookFolderNames = ArrayList<String>()
-            val originNames = ArrayList<String>()
+            val bookFolderNames = hashSetOf<String>()
+            val originNames = hashSetOf<String>()
             appDb.bookDao.all.forEach {
                 bookFolderNames.add(it.getFolderName())
                 if (it.isEpub) originNames.add(it.originName)
@@ -260,7 +276,9 @@ object BookHelp {
      * 检测该章节是否下载
      */
     fun hasContent(book: Book, bookChapter: BookChapter): Boolean {
-        return if (book.isLocalTxt) {
+        return if (book.isLocalTxt
+            || (bookChapter.isVolume && bookChapter.url.startsWith(bookChapter.title))
+        ) {
             true
         } else {
             downloadDir.exists(
@@ -290,11 +308,11 @@ object BookHelp {
                     ret = false
                     continue
                 }
-                if (SvgUtils.getSize(image.absolutePath) != null) {
-                    continue
-                }
                 BitmapFactory.decodeFile(image.absolutePath, op)
                 if (op.outWidth < 1 && op.outHeight < 1) {
+                    if (SvgUtils.getSize(image.absolutePath) != null) {
+                        continue
+                    }
                     ret = false
                     image.delete()
                 }
@@ -304,14 +322,11 @@ object BookHelp {
     }
 
     private fun checkImage(bytes: ByteArray): Boolean {
-        if (SvgUtils.getSize(ByteArrayInputStream(bytes)) != null) {
-            return true
-        }
         val op = BitmapFactory.Options()
         op.inJustDecodeBounds = true
         BitmapFactory.decodeByteArray(bytes, 0, bytes.size, op)
         if (op.outWidth < 1 && op.outHeight < 1) {
-            return false
+            return SvgUtils.getSize(ByteArrayInputStream(bytes)) != null
         }
         return true
     }
@@ -488,7 +503,6 @@ object BookHelp {
         )
     }
 
-    @Suppress("SpellCheckingInspection")
     private val regexOther by lazy {
         // 所有非字母数字中日韩文字 CJK区+扩展A-F区
         @Suppress("RegExpDuplicateCharacterInClass")
